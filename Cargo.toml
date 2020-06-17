@@ -1,5 +1,5 @@
 [package]
-name = "build_your_own_lisp_in_rust"
+name = "lispy"
 version = "0.1.0"
 authors = [" <armor_hiking@yahoo.co.jp>"]
 edition = "2018"
