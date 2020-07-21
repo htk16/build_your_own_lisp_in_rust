@@ -1,5 +1,6 @@
 use std::io;
 use std::io::{stdout, Write};
+use crate::parser;
 
 fn add_history(_: &str) {}
 
@@ -14,7 +15,8 @@ pub fn do_repl() {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                println!("No you're a {}", input);
+                let e = parser::root(&input);
+                println!("> {:?}", e);
                 add_history(&input);
             }
             Err(error) => {
