@@ -3,7 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::complete::{digit1, one_of},
-    combinator::{cut, map, map_res},
+    combinator::{cut, map, map_res, all_consuming},
     error::{ParseError, ErrorKind, VerboseError},
     multi::many0,
     sequence::{preceded, terminated, pair},
@@ -65,5 +65,5 @@ pub fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expressi
 }
 
 pub fn root<'a>(i: &'a str) -> IResult<&'a str, Expression, VerboseError<&'a str>> {
-    expr(i)
+    all_consuming(expr)(i)
 }

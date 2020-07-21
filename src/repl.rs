@@ -15,7 +15,7 @@ pub fn do_repl() {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                let e = parser::root(&input);
+                let e = parser::root(input.trim_end());
                 println!("> {:?}", e);
                 add_history(&input);
             }
