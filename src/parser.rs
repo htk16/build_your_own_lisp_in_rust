@@ -47,10 +47,14 @@ fn constant<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expressi
 
 fn application<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
     let _operator = preceded(sp, map(operator, |a| {Expression::Constant(Box::new(a))}));
-    map(
-        pair(_operator, many0(expr)),
-        |(op, exprs)| { Expression::Application(Box::new(op), exprs) }
-    )(i)
+    let _application = preceded(
+        tag("("),
+        terminated(
+            pair(_operator, many0(expr)),
+            tag(")")
+        )
+    );
+    map(_application, |(op, exprs)| { Expression::Application(Box::new(op), exprs) })(i)
 }
 
 pub fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
