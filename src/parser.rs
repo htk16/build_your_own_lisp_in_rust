@@ -51,19 +51,27 @@ fn application<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expre
         tag("("),
         terminated(
             pair(_operator, many0(expr)),
-            tag(")")
+            pair(sp, tag(")"))
         )
     );
     map(_application, |(op, exprs)| { Expression::Application(Box::new(op), exprs) })(i)
 }
 
-pub fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
+fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
     preceded(
         sp,
         alt((application, constant))
     )(i)
 }
 
-pub fn root<'a>(i: &'a str) -> IResult<&'a str, Expression, VerboseError<&'a str>> {
-    all_consuming(expr)(i)
+fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
+    let _root = map(
+        pair(operator, many0(expr)),
+        |(op, exprs)| { Expression::Application(Box::new(Expression::Constant(Box::new(op))), exprs) }
+    );
+    all_consuming(_root)(i)
+}
+
+pub fn parse<'a>(i: &'a str) -> IResult<&'a str, Expression, VerboseError<&'a str>> {
+    root(i)
 }
