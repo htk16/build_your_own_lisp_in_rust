@@ -3,8 +3,8 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::complete::{digit1, one_of},
-    combinator::{cut, map, map_res, all_consuming},
-    error::{ParseError, ErrorKind, VerboseError},
+    combinator::{map, map_res, all_consuming},
+    error::{ParseError, VerboseError},
     multi::many0,
     sequence::{preceded, terminated, pair},
     IResult
