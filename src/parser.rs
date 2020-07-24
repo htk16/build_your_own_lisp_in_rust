@@ -7,19 +7,17 @@ use nom::{
     error::{ParseError, ErrorKind, VerboseError},
     multi::many0,
     sequence::{preceded, terminated, pair},
-    IResult,
+    IResult
 };
 
 #[derive(Debug)]
-pub enum Atom {
+pub enum Ast {
+    // Atoms
     Integer(i64),
-    Operator(String)
-}
+    Symbol(String),
 
-#[derive(Debug)]
-pub enum Expression {
-    Constant(Box<Atom>),
-    Application(Box<Expression>, Vec<Expression>)
+    // Lists
+    List(Vec<Ast>)
 }
 
 fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
@@ -27,51 +25,58 @@ fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
     take_while(move |c| chars.contains(c))(i)
 }
 
-fn integer<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Atom, E> {
+fn integer<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     let pos_integer = map_res(
         digit1,
-        |digit_str: &str| {digit_str.parse::<i64>().map(Atom::Integer)});
+        |digit_str: &str| {digit_str.parse::<i64>().map(Ast::Integer)});
     let neg_integer = map_res(
         preceded(tag("-"), digit1),
-        |digit_str: &str| {digit_str.parse::<i64>().map(Atom::Integer)});
+        |digit_str: &str| {digit_str.parse::<i64>().map(Ast::Integer)});
     alt((pos_integer, neg_integer))(i)
 }
 
-fn operator<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Atom, E> {
-    map(one_of("+-*/"), |op| { Atom::Operator(op.to_string()) })(i)
+fn operator<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
+    map(one_of("+-*/"), |op| { Ast::Symbol(op.to_string()) })(i)
 }
 
-fn constant<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
-    map(alt((integer, operator)), |a| {Expression::Constant(Box::new(a))})(i)
+fn constant<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
+    alt((integer, operator))(i)
 }
 
-fn application<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
-    let _operator = preceded(sp, map(operator, |a| {Expression::Constant(Box::new(a))}));
+fn application<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     let _application = preceded(
         tag("("),
         terminated(
-            pair(_operator, many0(expr)),
+            pair(operator, many0(expr)),
             pair(sp, tag(")"))
         )
     );
-    map(_application, |(op, exprs)| { Expression::Application(Box::new(op), exprs) })(i)
+    map(_application, |(op, mut exprs)| {
+        let mut elems = vec!(op);
+        elems.append(&mut exprs);
+        Ast::List(elems)
+    })(i)
 }
 
-fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
+fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     preceded(
         sp,
         alt((application, constant))
     )(i)
 }
 
-fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Expression, E> {
+fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     let _root = map(
         pair(operator, many0(expr)),
-        |(op, exprs)| { Expression::Application(Box::new(Expression::Constant(Box::new(op))), exprs) }
+        |(op, mut exprs)| {
+            let mut elems = vec!(op);
+            elems.append(&mut exprs);
+            Ast::List(elems)
+        }
     );
     all_consuming(_root)(i)
 }
 
-pub fn parse<'a>(i: &'a str) -> IResult<&'a str, Expression, VerboseError<&'a str>> {
+pub fn parse<'a>(i: &'a str) -> IResult<&'a str, Ast, VerboseError<&'a str>> {
     root(i)
 }
