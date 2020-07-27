@@ -1,47 +1,138 @@
 use std::rc::Rc;
+use anyhow::{anyhow, Result, Context};
 use crate::parser::Ast;
 
+/// S-Expression
 #[derive(Debug)]
-pub enum Expression {
+pub struct Expression(IRRef);
+
+/// Internal Representation of S-Expression
+#[derive(Debug)]
+enum IR {
     // Atoms
     Nil,
     Integer(i64),
     Symbol(String),
 
     // Lists
-    Cons(ExpressionRef, ExpressionRef)
+    Cons(IRRef, IRRef)
 }
 
-pub type ExpressionRef = Rc<Expression>;
+type IRRef = Rc<IR>;
 
-pub struct ExpressionPool {
-    expressions: Vec<ExpressionRef>
+impl From<&Ast> for Expression {
+    fn from(ast: &Ast) -> Self {
+        IRRef::from(ast).into()
+    }
 }
 
-impl ExpressionPool {
-    pub fn new() -> ExpressionPool {
-        ExpressionPool{expressions: vec!()}
-    }
-
-    pub fn make(&mut self, ast: &Ast) -> ExpressionRef {
-        let expr = self.make_expression(ast);
-        self.register(expr)
-    }
-
-    fn register(&mut self, expr: Expression) -> ExpressionRef {
-        let expr_ref = Rc::new(expr);
-        let result = Rc::clone(&expr_ref);
-        self.expressions.push(expr_ref);
-        result
-    }
-
-    fn make_expression(&mut self, ast: &Ast) -> Expression {
+impl From<&Ast> for IRRef {
+    fn from(ast: &Ast) -> Self {
         match ast {
-            Ast::Integer(v) => Expression::Integer(*v),
-            Ast::Symbol(n) => Expression::Symbol(n.to_string()),
-            Ast::List(xs) => xs.iter()
-                .rev()
-                .fold(Expression::Nil, |acc, x| Expression::Cons(self.make(&x), self.register(acc))),
+            Ast::Integer(v) => Rc::new(IR::Integer(*v)),
+            Ast::Symbol(n) => Rc::new(IR::Symbol(String::from(n))),
+            Ast::List(xs) => {
+                let expr = xs.iter()
+                    .rev()
+                    .fold(IR::Nil, |acc, x| IR::Cons(IRRef::from(x), Rc::new(acc)));
+                Rc::new(expr)
+            }
+        }
+    }
+}
+
+struct ConsIterator {
+    cons: IRRef
+}
+
+impl Iterator for ConsIterator {
+    type Item = IRRef;
+    fn next(&mut self) -> Option<Self::Item> {
+        let cons = Rc::clone(&self.cons);
+        match &*cons {
+            IR::Cons(car, cdr) => {
+                self.cons = Rc::clone(&cdr);
+                Some(Rc::clone(&car))
+            },
+            _ => None
+        }
+    }
+}
+
+impl Clone for Expression {
+    fn clone(&self) -> Self {
+        Expression(Rc::clone(self.as_ir_ref()))
+    }
+}
+
+impl Into<Expression> for IRRef {
+    fn into(self) -> Expression {
+        Expression(Rc::clone(&self))
+    }
+}
+
+impl Into<Expression> for &IRRef {
+    fn into(self) -> Expression {
+        Expression(Rc::clone(self))
+    }
+}
+
+impl Into<Expression> for IR {
+    fn into(self) -> Expression {
+        Rc::new(self).into()
+    }
+}
+
+impl Expression {
+    fn as_ir_ref(&self) -> &IRRef {
+        &self.0
+    }
+
+    fn as_ir(&self) -> &IR {
+        &*self.as_ir_ref()
+    }
+
+    fn iter(&self) -> ConsIterator {
+        ConsIterator{ cons: Rc::clone(self.as_ir_ref()) }
+    }
+
+    pub fn evaluate(&self) -> Result<Expression> {
+        match self.as_ir() {
+            IR::Nil => Ok(self.clone()),
+            IR::Integer(_) => Ok(self.clone()),
+            IR::Symbol(name) => Err(anyhow!("Evaluating symbol(name: {}) isn't supported", name)),
+            IR::Cons(car, cdr) => apply_operator(&car, &cdr),
+        }
+    }
+}
+
+fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
+    match &**car {
+        IR::Symbol(op) => {
+            let cdr_expr: Expression = cdr.into();
+            let evaluated_values: Result<Vec<_>> = cdr_expr
+                .iter()
+                .map(|ir_ref| Into::<Expression>::into(&ir_ref))
+                .map(|expr| expr.evaluate())
+                .collect();
+            let evaluated_values = evaluated_values?;
+            let values: Result<Vec<_>> = evaluated_values
+                .iter()
+                .map(|ev| Into::<Result<i64>>::into(ev))
+                .collect();
+            values
+                .map(|vs| vs.iter().fold(0, |acc, v| acc + v))
+                .map(|sum| IR::Integer(sum).into())
+        },
+        e => Err(anyhow!("Invalid symbol: {:?}", e))
+    }
+}
+
+impl From<&Expression> for Result<i64> {
+    fn from(expr: &Expression) -> Result<i64> {
+        match expr.as_ir() {
+            IR::Integer(v) => Ok(*v),
+            _ => Err(anyhow!("{:?} isn't integer", expr.as_ir()))
         }
     }
 }

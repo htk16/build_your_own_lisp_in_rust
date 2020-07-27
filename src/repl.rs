@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{stdout, Write};
 use crate::parser;
-use crate::expression::{ExpressionPool};
+use crate::expression::{Expression};
 
 fn add_history(_: &str) {}
 
@@ -9,7 +9,6 @@ pub fn do_repl() {
     println!("Lispy version 0.1.0");
     println!("Press Ctrl+c to Exit\n");
 
-    let mut pool = ExpressionPool::new();
     loop {
         print!("lispy> ");
         stdout().flush().unwrap();
@@ -21,8 +20,10 @@ pub fn do_repl() {
                 println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((_, ast)) => {
-                        let e = pool.make(&ast);
-                        println!("{:?}", e)
+                        let expr = Expression::from(&ast);
+                        println!("{:?}", expr);
+                        let evalated_expr = expr.evaluate();
+                        println!("{:?}", evalated_expr);
                     },
                     Err(error) => {
                         println!("parse error: {}", error);
