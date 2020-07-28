@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use anyhow::{anyhow, Result, Context};
+use anyhow::{anyhow, Result};
 use crate::parser::Ast;
 
 /// S-Expression
@@ -109,6 +109,14 @@ impl Expression {
 fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
     match &**car {
         IR::Symbol(op) => {
+            let operation: Result<(i64, Box<dyn Fn(i64, i64) -> i64>)> = match op.as_str() {
+                "+" => Ok((0, Box::new(|lhs, rhs| lhs + rhs))),
+                "-" => Ok((0, Box::new(|lhs, rhs| lhs - rhs))),
+                "*" => Ok((1, Box::new(|lhs, rhs| lhs * rhs))),
+                "/" => Ok((1, Box::new(|lhs, rhs| lhs / rhs))),
+                _ => Err(anyhow!("Unsupported operator: {}", op))
+            };
+            let (init_value, function) = operation?;
             let cdr_expr: Expression = cdr.into();
             let evaluated_values: Result<Vec<_>> = cdr_expr
                 .iter()
@@ -118,11 +126,16 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
             let evaluated_values = evaluated_values?;
             let values: Result<Vec<_>> = evaluated_values
                 .iter()
-                .map(|ev| Into::<Result<i64>>::into(ev))
+                .map(Into::<Result<i64>>::into)
                 .collect();
-            values
-                .map(|vs| vs.iter().fold(0, |acc, v| acc + v))
-                .map(|sum| IR::Integer(sum).into())
+            let values = values?;
+            let sum = if values.len() < 2 {
+                values.iter().fold(init_value, |acc, v| function(acc, *v))
+            } else {
+                let first = values[0];
+                (&values[1..]).iter().fold(first, |acc, v| function(acc, *v))
+            };
+            Ok(IR::Integer(sum).into())
         },
         e => Err(anyhow!("Invalid symbol: {:?}", e))
     }
