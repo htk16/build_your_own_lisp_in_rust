@@ -109,6 +109,23 @@ impl Expression {
     }
 }
 
+impl ToString for Expression {
+    fn to_string(&self) -> String {
+        match self.as_ir() {
+            IR::Nil => "nil".to_string(),
+            IR::Integer(i) => i.to_string(),
+            IR::Symbol(s) => s.clone(),
+            IR::Cons(_, _) => format!(
+                "({})",
+                itertools::join(
+                    self.iter().map(|ir_ref| Expression(ir_ref).to_string()),
+                    " "
+                )
+            ),
+        }
+    }
+}
+
 fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
     match &**car {
         IR::Symbol(op) => {
@@ -153,4 +170,27 @@ impl From<&Expression> for Result<i64> {
             _ => Err(anyhow!("{:?} isn't integer", expr.as_ir())),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Expression;
+    use crate::parser::parse;
+    use nom::error::ErrorKind;
+
+    fn create(i: &str) -> String {
+        match parse::<(&str, ErrorKind)>(i).map(|(_, ast)| Expression::from(&ast)) {
+            Ok(e) => e.to_string(),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn create_expression() {
+        assert_eq!("(+)".to_string(), create("+"));
+        assert_eq!("(+ 1 (* 2 3) (- 4 5))", create("+ 1 (* 2 3) (- 4 5)"));
+    }
+
+    #[test]
+    fn evaluate_expression() {}
 }
