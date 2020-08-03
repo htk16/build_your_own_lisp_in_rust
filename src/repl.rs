@@ -1,9 +1,9 @@
 extern crate nom;
+use crate::expression::Expression;
+use crate::parser;
+use nom::error::ErrorKind;
 use std::io;
 use std::io::{stdout, Write};
-use crate::parser;
-use crate::expression::{Expression};
-use nom::error::ErrorKind; 
 
 fn add_history(_: &str) {}
 
@@ -26,7 +26,7 @@ pub fn do_repl() {
                         println!("{:?}", expr);
                         let evalated_expr = expr.evaluate();
                         println!("{:?}", evalated_expr);
-                    },
+                    }
                     Err(error) => {
                         println!("parse error: {}", error);
                     }

@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use anyhow::{anyhow, Result};
 use crate::parser::Ast;
+use anyhow::{anyhow, Result};
+use std::rc::Rc;
 
 /// S-Expression
 #[derive(Debug)]
@@ -15,7 +15,7 @@ enum IR {
     Symbol(String),
 
     // Lists
-    Cons(IRRef, IRRef)
+    Cons(IRRef, IRRef),
 }
 
 type IRRef = Rc<IR>;
@@ -32,7 +32,8 @@ impl From<&Ast> for IRRef {
             Ast::Integer(v) => Rc::new(IR::Integer(*v)),
             Ast::Symbol(n) => Rc::new(IR::Symbol(String::from(n))),
             Ast::List(xs) => {
-                let expr = xs.iter()
+                let expr = xs
+                    .iter()
                     .rev()
                     .fold(IR::Nil, |acc, x| IR::Cons(IRRef::from(x), Rc::new(acc)));
                 Rc::new(expr)
@@ -42,7 +43,7 @@ impl From<&Ast> for IRRef {
 }
 
 struct ConsIterator {
-    cons: IRRef
+    cons: IRRef,
 }
 
 impl Iterator for ConsIterator {
@@ -53,8 +54,8 @@ impl Iterator for ConsIterator {
             IR::Cons(car, cdr) => {
                 self.cons = Rc::clone(&cdr);
                 Some(Rc::clone(&car))
-            },
-            _ => None
+            }
+            _ => None,
         }
     }
 }
@@ -93,7 +94,9 @@ impl Expression {
     }
 
     fn iter(&self) -> ConsIterator {
-        ConsIterator{ cons: Rc::clone(self.as_ir_ref()) }
+        ConsIterator {
+            cons: Rc::clone(self.as_ir_ref()),
+        }
     }
 
     pub fn evaluate(&self) -> Result<Expression> {
@@ -114,7 +117,7 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
                 "-" => Ok((0, Box::new(|lhs, rhs| lhs - rhs))),
                 "*" => Ok((1, Box::new(|lhs, rhs| lhs * rhs))),
                 "/" => Ok((1, Box::new(|lhs, rhs| lhs / rhs))),
-                _ => Err(anyhow!("Unsupported operator: {}", op))
+                _ => Err(anyhow!("Unsupported operator: {}", op)),
             };
             let (init_value, function) = operation?;
             let cdr_expr: Expression = cdr.into();
@@ -133,11 +136,13 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
                 values.iter().fold(init_value, |acc, v| function(acc, *v))
             } else {
                 let first = values[0];
-                (&values[1..]).iter().fold(first, |acc, v| function(acc, *v))
+                (&values[1..])
+                    .iter()
+                    .fold(first, |acc, v| function(acc, *v))
             };
             Ok(IR::Integer(sum).into())
-        },
-        e => Err(anyhow!("Invalid symbol: {:?}", e))
+        }
+        e => Err(anyhow!("Invalid symbol: {:?}", e)),
     }
 }
 
@@ -145,7 +150,7 @@ impl From<&Expression> for Result<i64> {
     fn from(expr: &Expression) -> Result<i64> {
         match expr.as_ir() {
             IR::Integer(v) => Ok(*v),
-            _ => Err(anyhow!("{:?} isn't integer", expr.as_ir()))
+            _ => Err(anyhow!("{:?} isn't integer", expr.as_ir())),
         }
     }
 }
