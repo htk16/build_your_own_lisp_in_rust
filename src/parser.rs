@@ -1,15 +1,17 @@
 extern crate nom;
+extern crate itertools;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::complete::{digit1, one_of},
     combinator::{map, map_res, all_consuming},
-    error::{ParseError, VerboseError},
+    error::ParseError,
     multi::many0,
     sequence::{preceded, terminated, pair},
     IResult
 };
 
+/// AST of Rispy
 #[derive(Debug)]
 pub enum Ast {
     // Atoms
@@ -20,6 +22,30 @@ pub enum Ast {
     List(Vec<Ast>)
 }
 
+impl PartialEq for Ast {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Ast::Integer(i), Ast::Integer(j)) => i == j,
+            (Ast::Symbol(s), Ast::Symbol(t)) => s == t,
+            (Ast::List(xs), Ast::List(ys)) => xs == ys,
+            _ => false
+        }
+    }
+}
+
+impl Eq for Ast {}
+
+impl ToString for Ast {
+    fn to_string(&self) -> String {
+        match self {
+            Ast::Integer(i) => i.to_string(),
+            Ast::Symbol(s) => s.clone(),
+            Ast::List(xs) => format!("({})", itertools::join(xs.iter().map(|x| x.to_string()), " "))
+        }
+    }
+}
+
+// Parser definitions
 fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
     let chars = " \t\r\n";
     take_while(move |c| chars.contains(c))(i)
@@ -77,6 +103,26 @@ fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     all_consuming(_root)(i)
 }
 
-pub fn parse<'a>(i: &'a str) -> IResult<&'a str, Ast, VerboseError<&'a str>> {
+pub fn parse<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     root(i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+    use nom::error::ErrorKind;
+
+    fn parse_and_pprint(i: &str) -> String {
+        match parse::<(&str, ErrorKind)>(i) {
+            Ok((_, ast)) => ast.to_string(),
+            Err(e) => e.to_string()
+        }
+    }
+
+    #[test]
+    fn parse_expression() {
+        assert_eq!("(+)".to_string(), parse_and_pprint("+"));
+        assert_eq!("(+ 1 (* 2 3) (- 4 5))".to_string(), parse_and_pprint("+ 1 (* 2 3) (- 4 5)"));
+        // assert_eq!("".to_string(), parse_and_pprint("hoge fuga") )
+    }
 }

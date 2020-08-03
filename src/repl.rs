@@ -1,7 +1,9 @@
+extern crate nom;
 use std::io;
 use std::io::{stdout, Write};
 use crate::parser;
 use crate::expression::{Expression};
+use nom::error::ErrorKind; 
 
 fn add_history(_: &str) {}
 
@@ -16,7 +18,7 @@ pub fn do_repl() {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                let parse_result = parser::parse(input.trim_end());
+                let parse_result = parser::parse::<(&str, ErrorKind)>(input.trim_end());
                 println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((_, ast)) => {
