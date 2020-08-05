@@ -1,5 +1,5 @@
 extern crate nom;
-use crate::expression::Expression;
+use crate::expression::{Evaluate, Expression};
 use crate::parser;
 use nom::error::ErrorKind;
 use std::io;

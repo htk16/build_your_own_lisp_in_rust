@@ -6,6 +6,69 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub struct Expression(IRRef);
 
+impl Clone for Expression {
+    fn clone(&self) -> Self {
+        Expression(Rc::clone(self.as_ir_ref()))
+    }
+}
+
+impl Expression {
+    fn as_ir_ref(&self) -> &IRRef {
+        &self.0
+    }
+
+    fn as_ir(&self) -> &IR {
+        &*self.as_ir_ref()
+    }
+
+    fn iter(&self) -> ConsIterator {
+        ConsIterator {
+            cons: Rc::clone(self.as_ir_ref()),
+        }
+    }
+}
+
+pub trait Evaluate {
+    fn evaluate(&self) -> Result<Expression>;
+}
+
+impl Evaluate for Expression {
+    fn evaluate(&self) -> Result<Expression> {
+        match self.as_ir() {
+            IR::Nil => Ok(self.clone()),
+            IR::Integer(_) => Ok(self.clone()),
+            IR::Symbol(name) => Err(anyhow!("Evaluating symbol(name: {}) isn't supported", name)),
+            IR::Cons(car, cdr) => apply_operator(&car, &cdr),
+        }
+    }
+}
+
+impl ToString for Expression {
+    fn to_string(&self) -> String {
+        match self.as_ir() {
+            IR::Nil => "nil".to_string(),
+            IR::Integer(i) => i.to_string(),
+            IR::Symbol(s) => s.clone(),
+            IR::Cons(_, _) => format!(
+                "({})",
+                itertools::join(
+                    self.iter().map(|ir_ref| Expression(ir_ref).to_string()),
+                    " "
+                )
+            ),
+        }
+    }
+}
+
+impl From<&Expression> for Result<i64> {
+    fn from(expr: &Expression) -> Result<i64> {
+        match expr.as_ir() {
+            IR::Integer(v) => Ok(*v),
+            _ => Err(anyhow!("{:?} isn't integer", expr.as_ir())),
+        }
+    }
+}
+
 /// Internal Representation of S-Expression
 #[derive(Debug)]
 enum IR {
@@ -60,69 +123,22 @@ impl Iterator for ConsIterator {
     }
 }
 
-impl Clone for Expression {
-    fn clone(&self) -> Self {
-        Expression(Rc::clone(self.as_ir_ref()))
+impl From<IRRef> for Expression {
+    fn from(from: IRRef) -> Expression {
+        Expression(from)
     }
 }
 
-impl Into<Expression> for IRRef {
-    fn into(self) -> Expression {
-        Expression(Rc::clone(&self))
+impl From<&IRRef> for Expression {
+    fn from(from: &IRRef) -> Expression {
+        Expression(Rc::clone(from))
     }
 }
 
-impl Into<Expression> for &IRRef {
-    fn into(self) -> Expression {
-        Expression(Rc::clone(self))
-    }
-}
-
-impl Into<Expression> for IR {
-    fn into(self) -> Expression {
-        Rc::new(self).into()
-    }
-}
-
-impl Expression {
-    fn as_ir_ref(&self) -> &IRRef {
-        &self.0
-    }
-
-    fn as_ir(&self) -> &IR {
-        &*self.as_ir_ref()
-    }
-
-    fn iter(&self) -> ConsIterator {
-        ConsIterator {
-            cons: Rc::clone(self.as_ir_ref()),
-        }
-    }
-
-    pub fn evaluate(&self) -> Result<Expression> {
-        match self.as_ir() {
-            IR::Nil => Ok(self.clone()),
-            IR::Integer(_) => Ok(self.clone()),
-            IR::Symbol(name) => Err(anyhow!("Evaluating symbol(name: {}) isn't supported", name)),
-            IR::Cons(car, cdr) => apply_operator(&car, &cdr),
-        }
-    }
-}
-
-impl ToString for Expression {
-    fn to_string(&self) -> String {
-        match self.as_ir() {
-            IR::Nil => "nil".to_string(),
-            IR::Integer(i) => i.to_string(),
-            IR::Symbol(s) => s.clone(),
-            IR::Cons(_, _) => format!(
-                "({})",
-                itertools::join(
-                    self.iter().map(|ir_ref| Expression(ir_ref).to_string()),
-                    " "
-                )
-            ),
-        }
+impl From<IR> for Expression {
+    fn from(from: IR) -> Expression {
+        let ir_ref = Rc::new(from);
+        Expression::from(ir_ref)
     }
 }
 
@@ -137,10 +153,10 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
                 _ => Err(anyhow!("Unsupported operator: {}", op)),
             };
             let (init_value, function) = operation?;
-            let cdr_expr: Expression = cdr.into();
+            let cdr_expr: Expression = Expression::from(cdr);
             let evaluated_values: Result<Vec<_>> = cdr_expr
                 .iter()
-                .map(|ir_ref| Into::<Expression>::into(&ir_ref))
+                .map(|ir_ref| Into::<Expression>::into(ir_ref))
                 .map(|expr| expr.evaluate())
                 .collect();
             let evaluated_values = evaluated_values?;
@@ -160,15 +176,6 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
             Ok(IR::Integer(sum).into())
         }
         e => Err(anyhow!("Invalid symbol: {:?}", e)),
-    }
-}
-
-impl From<&Expression> for Result<i64> {
-    fn from(expr: &Expression) -> Result<i64> {
-        match expr.as_ir() {
-            IR::Integer(v) => Ok(*v),
-            _ => Err(anyhow!("{:?} isn't integer", expr.as_ir())),
-        }
     }
 }
 
