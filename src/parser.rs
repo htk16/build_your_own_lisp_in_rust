@@ -5,7 +5,7 @@ use nom::{
     bytes::complete::{tag, take_while},
     character::complete::{digit1, one_of},
     combinator::{all_consuming, map, map_res},
-    error::ParseError,
+    error::{context, ParseError},
     multi::many0,
     sequence::{pair, preceded, terminated},
     IResult,
@@ -61,11 +61,11 @@ fn integer<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
     let neg_integer = map_res(preceded(tag("-"), digit1), |digit_str: &str| {
         digit_str.parse::<i64>().map(Ast::Integer)
     });
-    alt((pos_integer, neg_integer))(i)
+    context("integer", alt((pos_integer, neg_integer)))(i)
 }
 
 fn operator<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    map(one_of("+-*/"), |op| Ast::Symbol(op.to_string()))(i)
+    context("operator", map(one_of("+-*/"), |op| Ast::Symbol(op.to_string())))(i)
 }
 
 fn constant<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
@@ -85,7 +85,7 @@ fn application<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, 
 }
 
 fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    preceded(sp, alt((application, constant)))(i)
+    context("expr", preceded(sp, alt((application, constant))))(i)
 }
 
 fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {

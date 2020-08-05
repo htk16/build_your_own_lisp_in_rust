@@ -1,7 +1,7 @@
 extern crate nom;
 use crate::expression::{Evaluate, Expression};
 use crate::parser;
-use nom::error::ErrorKind;
+use nom::error::{convert_error, VerboseError};
 use std::io;
 use std::io::{stdout, Write};
 
@@ -18,7 +18,7 @@ pub fn do_repl() {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                let parse_result = parser::parse::<(&str, ErrorKind)>(input.trim_end());
+                let parse_result = parser::parse::<VerboseError<&str>>(input.trim_end());
                 println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((_, ast)) => {
@@ -27,8 +27,12 @@ pub fn do_repl() {
                         let evalated_expr = expr.evaluate();
                         println!("{:?}", evalated_expr);
                     }
-                    Err(error) => {
-                        println!("parse error: {}", error);
+                    Err(e) => {
+                        match e {
+                            nom::Err::Incomplete(needed) => println!("parse incomplete: {:?}", needed),
+                            nom::Err::Error(e) => println!("parse error: {}", convert_error(&input, e)),
+                            nom::Err::Failure(e) => println!("parse failed: {:?}", e),
+                        };
                     }
                 };
                 add_history(&input);
