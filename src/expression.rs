@@ -143,16 +143,26 @@ impl From<IR> for Expression {
 }
 
 fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
+    type BinaryOp = Box<dyn Fn(i64, i64) -> i64>;
+    type Verifier = Box<dyn Fn(&[i64]) -> Result<()>>;
     match &**car {
         IR::Symbol(op) => {
-            let operation: Result<(i64, Box<dyn Fn(i64, i64) -> i64>)> = match op.as_str() {
-                "+" => Ok((0, Box::new(|lhs, rhs| lhs + rhs))),
-                "-" => Ok((0, Box::new(|lhs, rhs| lhs - rhs))),
-                "*" => Ok((1, Box::new(|lhs, rhs| lhs * rhs))),
-                "/" => Ok((1, Box::new(|lhs, rhs| lhs / rhs))),
+            let operation: Result<(i64, BinaryOp, Verifier)> = match op.as_str() {
+                "+" => Ok((0, Box::new(|lhs, rhs| lhs + rhs), Box::new(|_| Ok(())))),
+                "-" => Ok((0, Box::new(|lhs, rhs| lhs - rhs), Box::new(|_| Ok(())))),
+                "*" => Ok((1, Box::new(|lhs, rhs| lhs * rhs), Box::new(|_| Ok(())))),
+                "/" => Ok((
+                    1,
+                    Box::new(|lhs, rhs| lhs / rhs),
+                    Box::new(|xs| {match xs.len() {
+                        0 => Ok(()),
+                        1 if xs[0] != 0 => Ok(()),
+                        l if (l > 1) && (xs[1..].iter().find(|x| ** x == 0) == None) => Ok(()),
+                        _ => Err(anyhow!("Divide by zero"))
+                    }}))),
                 _ => Err(anyhow!("Unsupported operator: {}", op)),
             };
-            let (init_value, function) = operation?;
+            let (init_value, function, verifier) = operation?;
             let cdr_expr: Expression = Expression::from(cdr);
             let evaluated_values: Result<Vec<_>> = cdr_expr
                 .iter()
@@ -165,6 +175,7 @@ fn apply_operator(car: &IRRef, cdr: &IRRef) -> Result<Expression> {
                 .map(Into::<Result<i64>>::into)
                 .collect();
             let values = values?;
+            verifier(&values)?;
             let sum = if values.len() < 2 {
                 values.iter().fold(init_value, |acc, v| function(acc, *v))
             } else {
