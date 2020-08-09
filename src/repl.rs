@@ -19,13 +19,13 @@ pub fn do_repl() {
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
                 let parse_result = parser::parse::<VerboseError<&str>>(input.trim_end());
-                // println!("> {:?}", parse_result);
+                println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((_, ast)) => {
                         let expr = Expression::from(&ast);
                         let evaluated_result = expr.evaluate();
                         match evaluated_result {
-                            Ok(expr) => println!("{:?}", expr),
+                            Ok(expr) => println!("{}", expr.to_string()),
                             Err(msg) => println!("Error: {}", msg)
                         }
                     }
