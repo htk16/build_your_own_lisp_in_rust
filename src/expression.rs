@@ -324,7 +324,7 @@ mod tests {
     use nom::error::ErrorKind;
 
     fn create(i: &str) -> String {
-        match parse::<(&str, ErrorKind)>(i).map(|(_, ast)| Expression::from(&ast)) {
+        match parse(i).map(|(ast, _)| Expression::from(&ast)) {
             Ok(e) => e.to_string(),
             Err(e) => e.to_string(),
         }
@@ -343,8 +343,8 @@ mod tests {
     }
 
     fn eval(i: &str) -> String {
-        parse::<(&str, ErrorKind)>(i)
-            .map(|(_, ast)| Expression::from(&ast))
+        parse(i)
+            .map(|(ast, _)| Expression::from(&ast))
             .map_err(|err| anyhow!(err.to_string()))
             .and_then(|e| e.evaluate())
             .map(|e| e.to_string())

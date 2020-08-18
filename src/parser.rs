@@ -1,14 +1,13 @@
 extern crate itertools;
-extern crate nom;
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while},
-    character::complete::digit1,
-    combinator::{all_consuming, map, map_res},
-    error::{context, ParseError},
-    multi::many0,
-    sequence::{pair, preceded, terminated},
-    IResult,
+extern crate combine;
+use combine::{
+    parser::{
+        char::{char, digit, letter, space},
+        token::one_of,
+    },
+    error::ParseError,
+    stream::{Stream, StreamOnce, easy},
+    Parser, EasyParser, parser, many, many1, skip_many
 };
 
 /// AST of Rispy
@@ -54,73 +53,106 @@ impl ToString for Ast {
 }
 
 // Parser definitions
-fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    let chars = " \t\r\n";
-    take_while(move |c| chars.contains(c))(i)
+fn sp<Input>() -> impl Parser<Input, Output=()>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    skip_many(space())
 }
 
-fn integer<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    let pos_integer = map_res(digit1, |digit_str: &str| {
-        digit_str.parse::<i64>().map(Ast::Integer)
-    });
-    let neg_integer = map_res(preceded(tag("-"), digit1), |digit_str: &str| {
-        digit_str.parse::<i64>().map(Ast::Integer)
-    });
-    context("integer", alt((pos_integer, neg_integer)))(i)
+fn integer<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    char('-')
+        .with(many1::<String, _, _>(digit()).map(|s| Ast::Integer(-s.parse::<i64>().unwrap())))
+        .or(many1::<String, _, _>(digit()).map(|s| Ast::Integer(s.parse::<i64>().unwrap())))
 }
 
-fn symbol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    context("symbol",
-            map(alt((
-                tag("+"),
-                tag("-"),
-                tag("*"),
-                tag("/"),
-                tag("list"),
-                tag("head"),
-                tag("tail"),
-                tag("join"),
-                tag("eval")
-            )), |sym: &str| Ast::Symbol(sym.to_string())))(i)
+fn symbol<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    let valid_symbol = || one_of(r"+-*/\=<>!&?".chars());
+    let head = || letter().or(valid_symbol());
+    (head(), many::<String, _, _>(head().or(digit())))
+        .map(|(h, t)| Ast::Symbol(format!("{}{}", h, t)))
 }
 
-fn slist<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    let _application = preceded(
-        tag("("),
-        terminated(many0(expr), pair(sp, tag(")"))),
-    );
-    map(_application, |exprs| { Ast::SExpr(exprs) })(i)
+fn slist<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    char('(')
+        .with(many::<Vec<_>, _, _>(expr()))
+        .skip((sp(), char(')')))
+        .map(|es| Ast::SExpr(es))
 }
 
-fn qlist<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    let _qlist = preceded(
-        tag("{"),
-        terminated(many0(expr), pair(sp, tag("}"))),
-    );
-    map(_qlist, |exprs| { Ast::QExpr(exprs)} )(i)
+fn qlist<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    char('{')
+        .with(many::<Vec<_>, _, _>(expr()))
+        .skip((sp(), char('}')))
+        .map(|es| Ast::QExpr(es))
 }
 
-fn expr<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    context("expr", preceded(sp, alt((integer, symbol, slist, qlist))))(i)
+fn _expr<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    sp().with(symbol()
+              .or(integer())
+              .or(slist())
+              .or(qlist()))
 }
 
-fn root<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    let _root = map(many0(expr), |exprs| { Ast::SExpr(exprs) });
-    all_consuming(_root)(i)
+parser!{
+    fn expr[Input]()(Input) -> Ast
+    where [
+        Input: Stream<Token = char>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>]
+    {
+        _expr()
+    }
 }
 
-pub fn parse<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Ast, E> {
-    root(i)
+pub fn root<Input>() -> impl Parser<Input, Output=Ast>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    many::<Vec<_>, _, _>(expr())
+        .map(|es| Ast::SExpr(es))
 }
+
+pub fn parse<Input>(i: Input) -> Result<(Ast, Input), <Input as StreamOnce>::Error>
+where Input: Stream<Token = char>,
+      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+{
+    let mut parser = root();
+    parser.parse(i)
+}
+
+// pub fn easy_parse<'a, Input>(i: Input) -> Result<(Ast, Input), easy::ParseError<Input>>
+// where Input: Stream<Token = char, Range = &'a str>,
+//       easy::Stream<Input>: StreamOnce<Token = Input::Token, Range = Input::Range, Error = easy::ParseError<easy::Stream<Input>>, Position = Input::Position>,
+//       Input::Position: Default,
+// {
+//     let mut parser = root();
+//     parser.easy_parse(i)
+// }
 
 #[cfg(test)]
 mod tests {
-    use super::parse;
-    use nom::error::ErrorKind;
+    use super::root;
+    use crate::parser::combine::Parser;
 
     fn parse_and_format(i: &str) -> String {
-        match parse::<(&str, ErrorKind)>(i) {
-            Ok((_, ast)) => ast.to_string(),
+        let mut parser = root();
+        match parser.parse(i) {
+            Ok((ast, _)) => ast.to_string(),
             Err(e) => e.to_string(),
         }
     }
