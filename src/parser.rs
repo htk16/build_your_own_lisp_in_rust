@@ -6,8 +6,8 @@ use combine::{
         token::one_of,
     },
     error::ParseError,
-    stream::{Stream, StreamOnce, easy},
-    Parser, EasyParser, parser, many, many1, skip_many
+    stream::{Stream, StreamOnce},
+    Parser, parser, many, many1, skip_many
 };
 
 /// AST of Rispy
@@ -135,23 +135,12 @@ where Input: Stream<Token = char>,
     parser.parse(i)
 }
 
-// pub fn easy_parse<'a, Input>(i: Input) -> Result<(Ast, Input), easy::ParseError<Input>>
-// where Input: Stream<Token = char, Range = &'a str>,
-//       easy::Stream<Input>: StreamOnce<Token = Input::Token, Range = Input::Range, Error = easy::ParseError<easy::Stream<Input>>, Position = Input::Position>,
-//       Input::Position: Default,
-// {
-//     let mut parser = root();
-//     parser.easy_parse(i)
-// }
-
 #[cfg(test)]
 mod tests {
-    use super::root;
-    use crate::parser::combine::Parser;
+    use super::parse;
 
     fn parse_and_format(i: &str) -> String {
-        let mut parser = root();
-        match parser.parse(i) {
+        match parse(i) {
             Ok((ast, _)) => ast.to_string(),
             Err(e) => e.to_string(),
         }
@@ -166,6 +155,8 @@ mod tests {
         assert_eq!("(/)", parse_and_format("/"));
         assert_eq!("({1 2 (+ 5 6) 4})", parse_and_format("{1 2 (+ 5 6) 4}"));
         assert_eq!("(list 1 2 3 4)", parse_and_format("list 1 2 3 4"));
-        assert_eq!("(eval {head (list 1 2 3 4)})", parse_and_format("eval {head (list 1 2 3 4)}"))
+        assert_eq!("(eval {head (list 1 2 3 4)})", parse_and_format("eval {head (list 1 2 3 4)}"));
+        assert_eq!("(def {x} 100)", parse_and_format("def {x} 100"));
+        assert_eq!("(def {arglist} {a b x y})", parse_and_format("def {arglist} {a b x y}"));
     }
 }

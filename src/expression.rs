@@ -1,4 +1,5 @@
 use crate::parser::Ast;
+use crate::environment::Environment;
 use crate::error;
 use anyhow::{anyhow, Result};
 use std::rc::Rc;
@@ -14,30 +15,30 @@ impl Clone for Expression {
 }
 
 impl Expression {
-    fn as_ir_ref(&self) -> &IRRef {
+    pub fn as_ir_ref(&self) -> &IRRef {
         &self.0
     }
 
-    fn as_ir(&self) -> &IR {
+    pub fn as_ir(&self) -> &IR {
         &*self.as_ir_ref()
     }
 
-    fn symbol_name(&self) -> Option<&str> {
+    pub fn symbol_name(&self) -> Option<&str> {
         self.as_ir().symbol_name()
     }
 
-    fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         self.as_ir().type_name()
     }
 }
 
 pub trait Evaluate {
-    fn evaluate(&self) -> Result<Expression>;
+    fn evaluate(&self, env: &mut Environment) -> Result<Expression>;
 }
 
 impl Evaluate for Expression {
-    fn evaluate(&self) -> Result<Expression> {
-        self.as_ir_ref().evaluate()
+    fn evaluate(&self, env: &mut Environment) -> Result<Expression> {
+        self.as_ir_ref().evaluate(env)
     }
 }
 
@@ -56,12 +57,27 @@ impl From<&Expression> for Result<i64> {
     }
 }
 
+pub struct FunctionBody(Box<dyn Fn(&[Expression], &mut Environment) -> Result<Expression>>);
+
+impl FunctionBody {
+    pub fn new(func: impl Fn(&[Expression], &mut Environment) -> Result<Expression> + 'static) -> FunctionBody {
+        FunctionBody(Box::new(func))
+    }
+}
+
+impl std::fmt::Debug for FunctionBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("FunctionBody").finish()
+    }
+}
+
 /// Internal Representation of S-Expression
 #[derive(Debug)]
-enum IR {
+pub enum IR {
     // Atoms
     Integer(i64),
     Symbol(String),
+    Function(FunctionBody),
 
     // Lists
     SExpr(Vec<IRRef>),
@@ -69,20 +85,37 @@ enum IR {
 }
 
 impl IR {
-    fn symbol_name(&self) -> Option<&str> {
+    pub fn symbol_name(&self) -> Option<&str> {
         match self {
             IR::Symbol(name) => Some(&name),
             _ => None
         }
     }
 
-    fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         match *self {
             IR::Integer(_) => "integer",
             IR::Symbol(_) => "symbol",
+            IR::Function(_) => "function",
             IR::SExpr(_) => "s-expression",
             IR::QExpr(_) => "q-expression"
         }
+    }
+
+    pub fn is_symbol(&self) -> bool {
+        if let IR::Symbol(_) = *self {true} else {false}
+    }
+
+    pub fn is_sexpr(&self) -> bool {
+        if let IR::SExpr(_) = *self {true} else {false}
+    }
+
+    pub fn is_qexpr(&self) -> bool {
+        if let IR::QExpr(_) = *self {true} else {false}
+    }
+
+    pub fn is_function(&self) -> bool {
+        if let IR::Function(_) = *self {true} else {false}
     }
 }
 
@@ -93,6 +126,7 @@ impl ToString for IR {
         match self {
             IR::Integer(i) => i.to_string(),
             IR::Symbol(s) => s.clone(),
+            IR::Function(_) => "<function>".to_string(),
             IR::SExpr(exprs) => format!(
                 "({})",
                 itertools::join(
@@ -110,9 +144,13 @@ impl ToString for IR {
 }
 
 impl Evaluate for IRRef {
-    fn evaluate(&self) -> Result<Expression> {
+    fn evaluate(&self, env: &mut Environment) -> Result<Expression> {
         match &**self {
-            IR::SExpr(exprs) => eval_slist(exprs.as_slice()),
+            IR::SExpr(exprs) => eval_slist(exprs.as_slice(), env),
+            IR::Symbol(name) => env
+                .find(name.as_ref())
+                .map(|v| Expression(Rc::clone(v.as_ir_ref())))
+                .ok_or(anyhow!(format!("Unable to resolve symbol: {} in this context", name))),
             // self evaluation forms
             _ => Ok(Rc::clone(self).into())
         }
@@ -167,161 +205,31 @@ impl From<IR> for Expression {
     }
 }
 
-fn eval_slist(exprs: &[IRRef]) -> Result<Expression> {
-    let evaluated_exprs: Result<Vec<_>> = exprs.iter().map(|expr| expr.evaluate()).collect();
-    let mut evaluated_exprs = evaluated_exprs?;
-    match evaluated_exprs.len() {
+fn eval_slist(exprs: &[IRRef], env: &mut Environment) -> Result<Expression> {
+    match exprs.len() {
         0 => Ok(IR::SExpr(vec![]).into()),
-        1 => Ok(evaluated_exprs.pop().unwrap()),
-        _ => apply_function(&evaluated_exprs)
+        1 => exprs[0].evaluate(env),
+        _ => exprs.iter()
+            .map(|expr| expr.evaluate(env))
+            .collect::<Result<Vec<_>>>()
+            .and_then(|es| apply_function(&es, env))
     }
 }
 
-fn apply_function(exprs: &[Expression]) -> Result<Expression> {
-    assert!(exprs.len() > 1);
-    let head_symbol_name = exprs[0]
-        .symbol_name()
-        .ok_or(error::make_type_error("symbol", &exprs[0].to_string()))?;
-    let function = functions::get_function(head_symbol_name)?;
-    function(&exprs[1..])
-}
-
-mod functions {
-    use std::rc::Rc;
-    use ::phf::phf_map;
-    use anyhow::{anyhow, Result};
-    use super::{Expression, IR, Evaluate};
-    use crate::error;
-
-    fn get_numbers(exprs: &[Expression]) -> Result<Vec<i64>> {
-        exprs.iter().map(Into::<Result<i64>>::into).collect()
-    }
-
-    type BuiltinFunction = fn(&[Expression]) -> Result<Expression>;
-
-    fn plus(exprs: &[Expression]) -> Result<Expression> {
-        get_numbers(exprs)
-            .map(|nums| nums.iter().fold(0, |acc, n| acc + n))
-            .map(|v| IR::Integer(v).into())
-    }
-
-    fn minus(exprs: &[Expression]) -> Result<Expression> {
-        let numbers = get_numbers(exprs)?;
-        let result = if numbers.len() == 1 {
-            numbers[0] * -1
-        } else {
-            numbers[1..].iter().fold(numbers[0], |acc, n| acc - n)
-        };
-        Ok(IR::Integer(result).into())
-    }
-
-    fn multiple(exprs: &[Expression]) -> Result<Expression> {
-        get_numbers(exprs)
-            .map(|nums| nums.iter().fold(1, |acc, n| acc * n))
-            .map(|v| IR::Integer(v).into())
-    }
-
-    fn divide(exprs: &[Expression]) -> Result<Expression> {
-        let numbers = get_numbers(exprs)?;
-        if let Some(_) = numbers.iter().find(|v| **v == 0) {
-            return Err(anyhow!("Divide by zero"))
-        }
-
-        let result = if numbers.len() == 1 {
-            1 / numbers[0]
-        } else {
-            numbers[1..].iter().fold(numbers[0], |acc, n| acc / n)
-        };
-        Ok(IR::Integer(result).into())
-    }
-
-    fn make_qexpr(exprs: &[Expression]) -> Result<Expression> {
-        let qlist_elems = exprs
-            .iter()
-            .map(|e| Rc::clone(e.as_ir_ref()))
-            .collect::<Vec<_>>();
-        Ok(IR::QExpr(qlist_elems).into())
-    }
-
-    fn head_qexpr(exprs: &[Expression]) -> Result<Expression> {
-        if exprs.len() != 1 { return Err(error::make_argument_error("head", 1, exprs.len())) }
-        match exprs[0].as_ir() {
-            IR::QExpr(xs) if xs.len() > 0 => Ok(Rc::clone(&xs[0]).into()),
-            IR::QExpr(xs) if xs.len() == 0 => Err(anyhow!("Function 'head' passed {}!")),
-            _ => Err(error::make_type_error("qexpr", &exprs[0].to_string()))
-        }
-    }
-
-    fn tail_qexpr(exprs: &[Expression]) -> Result<Expression> {
-        if exprs.len() != 1 { return Err(error::make_argument_error("tail", 1, exprs.len())) }
-        match exprs[0].as_ir() {
-            IR::QExpr(xs) if xs.len() == 0 => Ok(exprs[0].as_ir_ref().into()),
-            IR::QExpr(xs) if xs.len() > 0 => {
-                let qexpr: Expression = IR::QExpr(
-                    xs[1..]
-                        .iter()
-                        .map(Rc::clone)
-                        .collect()).into();
-                Ok(qexpr)
-            },
-            _ => Err(error::make_type_error("qexpr", &exprs[0].to_string()))
-        }
-    }
-
-    fn join_qexprs(exprs: &[Expression]) -> Result<Expression> {
-        let elems_list: Result<Vec<_>> = exprs
-            .iter()
-            .map(|expr| match expr.as_ir() {
-                IR::QExpr(xs) => Ok(xs),
-                e => Err(error::make_type_error("qexpr", &(*e).to_string()))
-            })
-            .collect();
-        let elems_list = elems_list?;
-        let qexpr_elems: Vec<_> = elems_list
-            .iter()
-            .map(|xs| xs.iter())
-            .flatten()
-            .map(|x| Rc::clone(x))
-            .collect();
-        Ok(IR::QExpr(qexpr_elems.into()).into())
-    }
-
-    fn eval_qexpr(exprs: &[Expression]) -> Result<Expression> {
-        if exprs.len() != 1 { return Err(error::make_argument_error("head", 1, exprs.len())) }
-        match exprs[0].as_ir() {
-            IR::QExpr(xs) => Expression::from(IR::SExpr(xs.to_vec())).evaluate(),
-            _ => Err(error::make_type_error("qlist", &exprs[0].to_string()))
-        }
-    }
-
-    static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
-        phf_map! {
-            "+" => plus,
-            "-" => minus,
-            "*" => multiple,
-            "/" => divide,
-            "list" => make_qexpr,
-            "head" => head_qexpr,
-            "tail" => tail_qexpr,
-            "join" => join_qexprs,
-            "eval" => eval_qexpr
-        }
-    };
-
-    pub fn get_function(name: &str) -> Result<BuiltinFunction> {
-        BUILTIN_FUNCTIONS
-            .get(name)
-            .map(|ref_fn| *ref_fn)
-            .ok_or(anyhow!("Not found function '{}'", name))
+fn apply_function(exprs: &[Expression], env: &mut Environment) -> Result<Expression> {
+    assert!(exprs.len() > 0);
+    if let IR::Function(func) = exprs[0].as_ir() {
+        func.0(&exprs[1..], env)
+    } else {
+        Err(error::make_type_error("function", exprs[0].as_ir().type_name()))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Expression, Evaluate};
+    use super::{Expression, Evaluate, Environment};
     use crate::parser::parse;
     use anyhow::anyhow;
-    use nom::error::ErrorKind;
 
     fn create(i: &str) -> String {
         match parse(i).map(|(ast, _)| Expression::from(&ast)) {
@@ -340,26 +248,31 @@ mod tests {
         assert_eq!("({1 2 (+ 5 6) 4})", create("{1 2 (+ 5 6) 4}"));
         assert_eq!("(list 1 2 3 4)", create("list 1 2 3 4"));
         assert_eq!("(eval {head (list 1 2 3 4)})", create("eval {head (list 1 2 3 4)}"));
+        assert_eq!("(def {x} 100)", create("def {x} 100"));
+        assert_eq!("(def {arglist} {a b x y})", create("def {arglist} {a b x y}"));
     }
 
     fn eval(i: &str) -> String {
+        let mut env = Environment::init();
         parse(i)
             .map(|(ast, _)| Expression::from(&ast))
             .map_err(|err| anyhow!(err.to_string()))
-            .and_then(|e| e.evaluate())
+            .and_then(|e| e.evaluate(&mut env))
             .map(|e| e.to_string())
             .unwrap_or_else(|err| err.to_string())
     }
 
     #[test]
     fn evaluate_expression() {
-        assert_eq!("+", eval("+"));
+        assert_eq!("<function>", eval("+"));
         assert_eq!("6", eval("+ 1 (* 2 3) (- 4 5)"));
         assert_eq!("-100", eval("(- 100)"));
         assert_eq!("()", eval(""));
-        assert_eq!("/", eval("/"));
+        assert_eq!("<function>", eval("/"));
         assert_eq!("{1 2 (+ 5 6) 4}", eval("{1 2 (+ 5 6) 4}"));
         assert_eq!("{1 2 3 4}", eval("list 1 2 3 4"));
         assert_eq!("1", eval("eval {head (list 1 2 3 4)}"));
+        assert_eq!("()", eval("def {x} 100"));
+        assert_eq!("()", eval("def {arglist} {a b x y}"));
     }
 }
