@@ -1,9 +1,6 @@
-use crate::expression::{Expression, IR, FunctionBody};
-use crate::function;
-use anyhow::Result;
+use crate::expression::{Expression, BUILTIN_FUNCTIONS};
 use std::rc::Rc;
 use std::borrow::Borrow;
-use std::mem;
 
 /// Environment
 pub struct Environment {
@@ -24,11 +21,6 @@ pub struct Binding {
     next: Link
 }
 
-// TODO replace IR::from
-fn make_function(func: fn(&[Expression], &Environment) -> Result<(Expression, Environment)>) -> Expression {
-    Expression::from(IR::Function(FunctionBody::new(func)))
-}
-
 impl Environment {
     pub fn new(binding: Link) -> Environment {
         Environment{ binding }
@@ -46,9 +38,9 @@ impl Environment {
 
     pub fn init() -> Environment {
         let init_env = Environment::new(None);
-        function::BUILTIN_FUNCTIONS
+        BUILTIN_FUNCTIONS
             .entries()
-            .fold(init_env, |env, (name, builtin)| env.push(name.to_string(), make_function(*builtin)))
+            .fold(init_env, |env, (name, builtin)| env.push(name.to_string(), Expression::make_function(*builtin)))
     }
 
     fn clone_binding(&self) -> Link {

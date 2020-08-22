@@ -10,7 +10,7 @@ use combine::{
     Parser, parser, many, many1, skip_many
 };
 
-/// AST of Rispy
+/// AST of Lispy
 #[derive(Debug)]
 pub enum Ast {
     // Atoms

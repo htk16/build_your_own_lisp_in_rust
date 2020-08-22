@@ -9,7 +9,7 @@ use std::io::{stdout, Write};
 fn add_history(_: &str) {}
 
 pub fn do_repl() {
-    println!("Lispy version 0.1.0");
+    println!("Lispy version 0.11.0");
     println!("Press Ctrl+c to Exit\n");
 
     let mut env = Environment::init();
@@ -27,9 +27,12 @@ pub fn do_repl() {
                 match parse_result {
                     Ok((ast, _)) => {
                         let expr = Expression::from(&ast);
-                        let evaluated_result = expr.evaluate(&mut env);
+                        let evaluated_result = expr.evaluate(&env);
                         match evaluated_result {
-                            Ok((expr, _)) => println!("{}", expr.to_string()),
+                            Ok((expr, new_env)) => {
+                                println!("{}", expr.to_string());
+                                env = new_env
+                            }
                             Err(msg) => println!("Error: {}", msg)
                         }
                     }
