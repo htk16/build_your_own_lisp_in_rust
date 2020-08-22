@@ -33,11 +33,11 @@ impl Expression {
 }
 
 pub trait Evaluate {
-    fn evaluate(&self, env: &mut Environment) -> Result<Expression>;
+    fn evaluate(&self, env: &Environment) -> Result<(Expression, Environment)>;
 }
 
 impl Evaluate for Expression {
-    fn evaluate(&self, env: &mut Environment) -> Result<Expression> {
+    fn evaluate(&self, env: &Environment) -> Result<(Expression, Environment)> {
         self.as_ir_ref().evaluate(env)
     }
 }
@@ -57,10 +57,10 @@ impl From<&Expression> for Result<i64> {
     }
 }
 
-pub struct FunctionBody(Box<dyn Fn(&[Expression], &mut Environment) -> Result<Expression>>);
+pub struct FunctionBody(Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>>);
 
 impl FunctionBody {
-    pub fn new(func: impl Fn(&[Expression], &mut Environment) -> Result<Expression> + 'static) -> FunctionBody {
+    pub fn new(func: impl Fn(&[Expression], &Environment) -> Result<(Expression, Environment)> + 'static) -> FunctionBody {
         FunctionBody(Box::new(func))
     }
 }
@@ -144,15 +144,15 @@ impl ToString for IR {
 }
 
 impl Evaluate for IRRef {
-    fn evaluate(&self, env: &mut Environment) -> Result<Expression> {
+    fn evaluate(&self, env: &Environment) -> Result<(Expression, Environment)> {
         match &**self {
             IR::SExpr(exprs) => eval_slist(exprs.as_slice(), env),
             IR::Symbol(name) => env
                 .find(name.as_ref())
-                .map(|v| Expression(Rc::clone(v.as_ir_ref())))
+                .map(|v| (Expression(Rc::clone(v.as_ir_ref())), env.clone()))
                 .ok_or(anyhow!(format!("Unable to resolve symbol: {} in this context", name))),
             // self evaluation forms
-            _ => Ok(Rc::clone(self).into())
+            _ => Ok((Rc::clone(self).into(), env.clone()))
         }
     }
 }
@@ -205,18 +205,19 @@ impl From<IR> for Expression {
     }
 }
 
-fn eval_slist(exprs: &[IRRef], env: &mut Environment) -> Result<Expression> {
+fn eval_slist(exprs: &[IRRef], env: &Environment) -> Result<(Expression, Environment)> {
     match exprs.len() {
-        0 => Ok(IR::SExpr(vec![]).into()),
+        0 => Ok((IR::SExpr(vec![]).into(), env.clone())),
         1 => exprs[0].evaluate(env),
         _ => exprs.iter()
             .map(|expr| expr.evaluate(env))
             .collect::<Result<Vec<_>>>()
-            .and_then(|es| apply_function(&es, env))
+            .map(|rs| rs.iter().map(|(expr, _)| Expression::clone(expr)).collect::<Vec<_>>())
+            .and_then(|es| apply_function(es.as_slice(), env))
     }
 }
 
-fn apply_function(exprs: &[Expression], env: &mut Environment) -> Result<Expression> {
+fn apply_function(exprs: &[Expression], env: &Environment) -> Result<(Expression, Environment)> {
     assert!(exprs.len() > 0);
     if let IR::Function(func) = exprs[0].as_ir() {
         func.0(&exprs[1..], env)
@@ -253,12 +254,12 @@ mod tests {
     }
 
     fn eval(i: &str) -> String {
-        let mut env = Environment::init();
+        let env = Environment::init();
         parse(i)
             .map(|(ast, _)| Expression::from(&ast))
             .map_err(|err| anyhow!(err.to_string()))
-            .and_then(|e| e.evaluate(&mut env))
-            .map(|e| e.to_string())
+            .and_then(|e| e.evaluate(&env))
+            .map(|(e, _)| e.to_string())
             .unwrap_or_else(|err| err.to_string())
     }
 

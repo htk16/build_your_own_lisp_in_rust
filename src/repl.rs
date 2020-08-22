@@ -29,7 +29,7 @@ pub fn do_repl() {
                         let expr = Expression::from(&ast);
                         let evaluated_result = expr.evaluate(&mut env);
                         match evaluated_result {
-                            Ok(expr) => println!("{}", expr.to_string()),
+                            Ok((expr, _)) => println!("{}", expr.to_string()),
                             Err(msg) => println!("Error: {}", msg)
                         }
                     }

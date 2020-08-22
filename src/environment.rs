@@ -7,29 +7,36 @@ use std::mem;
 
 /// Environment
 pub struct Environment {
-    bindings: Link
+    binding: Link
+}
+
+impl Clone for Environment {
+    fn clone(&self) -> Self {
+        Environment::new(self.clone_binding())
+    }
 }
 
 type Link = Option<Rc<Binding>>;
 
-struct Binding {
+pub struct Binding {
     name: String,
     value: Expression,
     next: Link
 }
 
 // TODO replace IR::from
-fn make_function(func: fn(&[Expression], &mut Environment) -> Result<Expression>) -> Expression {
+fn make_function(func: fn(&[Expression], &Environment) -> Result<(Expression, Environment)>) -> Expression {
     Expression::from(IR::Function(FunctionBody::new(func)))
 }
 
 impl Environment {
-    pub fn new() -> Environment {
-        Environment{ bindings: None }
+    pub fn new(binding: Link) -> Environment {
+        Environment{ binding }
     }
 
-    pub fn push(&mut self, name: String, value: Expression) {
-        self.bindings = Some(Rc::new(Binding { name, value, next: mem::replace(&mut self.bindings, None) }));
+    pub fn push(&self, name: String, value: Expression) -> Environment {
+        let new_link = Some(Rc::new(Binding {name, value, next: self.clone_binding()}));
+        Environment::new(new_link)
     }
 
     pub fn find<'a>(&'a self, name: &str) -> Option<&'a Expression> {
@@ -38,11 +45,14 @@ impl Environment {
     }
 
     pub fn init() -> Environment {
-        let mut env = Environment::new();
-        for (name, builtin) in function::BUILTIN_FUNCTIONS.entries() {
-            env.push(name.to_string(), make_function(*builtin))
-        }
-        env
+        let init_env = Environment::new(None);
+        function::BUILTIN_FUNCTIONS
+            .entries()
+            .fold(init_env, |env, (name, builtin)| env.push(name.to_string(), make_function(*builtin)))
+    }
+
+    fn clone_binding(&self) -> Link {
+        self.binding.as_ref().map(|b| Rc::clone(&b))
     }
 }
 
@@ -51,7 +61,7 @@ impl<'a> IntoIterator for &'a Environment {
     type IntoIter = EnvironmentIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        EnvironmentIter{ next: self.bindings.as_ref().map(|b| b.borrow()) }
+        EnvironmentIter{ next: self.binding.as_ref().map(|b| b.borrow()) }
     }
 }
 
