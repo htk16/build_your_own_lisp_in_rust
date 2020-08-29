@@ -5,11 +5,18 @@ use crate::parser::Ast;
 use crate::error;
 use std::rc::Rc;
 
-pub struct FunctionBody(Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>>);
+pub type FunctionBodyImpl = Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>>;
+pub struct FunctionBody(FunctionBodyImpl);
 
 impl FunctionBody {
     pub fn new(func: impl Fn(&[Expression], &Environment) -> Result<(Expression, Environment)> + 'static) -> FunctionBody {
         FunctionBody(Box::new(func))
+    }
+}
+
+impl From<FunctionBodyImpl> for FunctionBody {
+    fn from(func: FunctionBodyImpl) -> Self {
+        FunctionBody(func)
     }
 }
 

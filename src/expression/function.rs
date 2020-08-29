@@ -2,7 +2,7 @@ use std::rc::Rc;
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
 use crate::expression::{Expression, Evaluate, EvaluationResult};
-use crate::expression::ir::IR;
+use crate::expression::ir::{IR, FunctionBody};
 use crate::environment::Environment;
 use crate::error;
 
@@ -136,6 +136,47 @@ fn define_symbol(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     }
 }
 
+fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    if exprs.len() != 2 {
+        return Err(error::make_argument_error(r"\", 2, exprs.len()))
+    }
+
+    match (exprs[0].as_ir(), exprs[1].as_ir()) {
+        (IR::QExpr(_params), IR::QExpr(bs)) => {
+            for param in _params {
+                if !param.is_symbol() {
+                    return Err(error::make_type_error("symbol", param.type_name()))
+                }
+            };
+
+            let params: Vec<Expression> = _params
+                .iter()
+                .map(|ir_ref| Expression::from(ir_ref))
+                .collect();
+            let lambda_body = Expression::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
+            let boxed_func: Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>> =
+                Box::new(move |args, env| {
+                    if params.len() != args.len() {
+                        return Err(error::make_argument_error("lambda", params.len(), args.len()))
+                    }
+
+                    // TODO added support for variable arguments.
+                    let local_env = params.iter().zip(args.iter())
+                        .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
+                    lambda_body.evaluate(&local_env)
+                });
+            let body = FunctionBody::from(boxed_func);
+            Ok((IR::Function(body).into(), env.clone()))
+        },
+        (IR::QExpr(_), _) => {
+            Err(error::make_type_error("qlist", &exprs[1].type_name()))
+        },
+        (_, _) => {
+            Err(error::make_type_error("qlist", &exprs[0].type_name()))
+        }
+    }
+}
+
 pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
     phf_map! {
         "+" => plus,
@@ -148,5 +189,6 @@ pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
         "join" => join_qexprs,
         "eval" => eval_qexpr,
         "def" => define_symbol,
+        r"\" => lambda
     }
 };
