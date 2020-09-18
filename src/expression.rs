@@ -41,9 +41,13 @@ impl Expression {
         &*self.as_ir_ref()
     }
 
+    pub fn make_nil() -> Expression {
+        Expression::from(IR::SExpr(vec![]))
+    }
+
     pub fn make_function(func: BuiltinFunction) -> Expression {
         // TODO replace IR::from
-        Expression::from(IR::Function(FunctionBody::new(func)))
+        Expression::from(IR::Function(FunctionBody::new(Box::new(func))))
     }
 }
 
@@ -82,6 +86,7 @@ mod tests {
         assert_eq!("(eval {head (list 1 2 3 4)})", create("eval {head (list 1 2 3 4)}"));
         assert_eq!("(def {x} 100)", create("def {x} 100"));
         assert_eq!("(def {arglist} {a b x y})", create("def {arglist} {a b x y}"));
+        assert_eq!("(def {add-mul} (\\ {x y} {+ x (* x y)}))", create("def {add-mul} (\\ {x y} {+ x (* x y)})"));
     }
 
     fn eval(i: &str) -> String {
@@ -92,6 +97,23 @@ mod tests {
             .and_then(|e| e.evaluate(&env))
             .map(|(e, _)| e.to_string())
             .unwrap_or_else(|err| err.to_string())
+    }
+
+    fn eval_codes(is: &Vec<&str>) -> String {
+        let parse_result: Option<Vec<Expression>> = is.iter()
+            .map(|i| parse(*i).ok().map(|(ast, _)| Expression::from(&ast)))
+            .collect::<Option<Vec<Expression>>>();
+        match parse_result {
+            Some(es) => {
+                let nil = Expression::make_nil();
+                let init_env = Environment::init();
+                es.iter()
+                    .fold(Ok((nil, init_env)), |acc, expr| acc.and_then(|(_, env)| expr.evaluate(&env)))
+                    .map(|(expr, _)| expr.to_string())
+                    .unwrap_or("evaluation error".to_string())
+            },
+            None => "parse error".to_string()
+        }
     }
 
     #[test]
@@ -106,5 +128,7 @@ mod tests {
         assert_eq!("1", eval("eval {head (list 1 2 3 4)}"));
         assert_eq!("()", eval("def {x} 100"));
         assert_eq!("()", eval("def {arglist} {a b x y}"));
+        assert_eq!("()", eval("def {add-mul} (\\ {x y} {+ x (* x y)})"));
+        assert_eq!("210", eval_codes(&vec!["def {add-mul} (\\ {x y} {+ x (* x y)})", "add-mul 10 20"]));
     }
 }

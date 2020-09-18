@@ -9,8 +9,8 @@ pub type FunctionBodyImpl = Box<dyn Fn(&[Expression], &Environment) -> Result<(E
 pub struct FunctionBody(FunctionBodyImpl);
 
 impl FunctionBody {
-    pub fn new(func: impl Fn(&[Expression], &Environment) -> Result<(Expression, Environment)> + 'static) -> FunctionBody {
-        FunctionBody(Box::new(func))
+    pub fn new(func: FunctionBodyImpl) -> Self {
+        FunctionBody(func)
     }
 }
 
@@ -33,6 +33,7 @@ pub enum IR {
     Integer(i64),
     Symbol(String),
     Function(FunctionBody),
+    Lambda { params: Vec<Expression>, rests: Option<Expression>, body: Expression, args: Vec<Expression> },
 
     // Lists
     SExpr(Vec<IRRef>),
@@ -45,6 +46,7 @@ impl IR {
             IR::Integer(_) => "integer",
             IR::Symbol(_) => "symbol",
             IR::Function(_) => "function",
+            IR::Lambda {params:_, rests:_, body:_, args:_} => "lambda",
             IR::SExpr(_) => "s-expression",
             IR::QExpr(_) => "q-expression"
         }
@@ -88,7 +90,7 @@ impl IR {
 
     fn eval_slist(exprs: &[IRRef], env: &Environment) -> EvaluationResult {
         match exprs.len() {
-            0 => Ok((IR::SExpr(vec![]).into(), env.clone())),
+            0 => Ok((Expression::make_nil(), env.clone())),
             1 => exprs[0].evaluate(env),
             _ => exprs.iter()
                 .map(|expr| expr.evaluate(env))
@@ -100,10 +102,37 @@ impl IR {
 
     fn apply_function(exprs: &[Expression], env: &Environment) -> EvaluationResult {
         assert!(exprs.len() > 0);
-        if let IR::Function(func) = exprs[0].as_ir() {
-            func.0(&exprs[1..], env)
+        match exprs[0].as_ir() {
+            IR::Function(func) => func.0(&exprs[1..], env),
+            IR::Lambda {params, rests, body, args:applied_args} =>
+                IR::apply_lambda(params, rests, body, applied_args, exprs[1..].into(), env),
+            _ => Err(error::make_type_error("function or lambda", exprs[0].as_ir().type_name()))
+        }
+    }
+
+    fn apply_lambda(
+        params: &Vec<Expression>,
+        rests: &Option<Expression>,
+        body: &Expression,
+        applied_args: &Vec<Expression>,
+        args: Vec<Expression>,
+        env: &Environment) -> EvaluationResult {
+        let mut _exprs = args.clone();
+        let mut new_args = applied_args.clone();
+        new_args.append(&mut _exprs);
+
+        // TODO support rest parameters
+        if params.len() == new_args.len() {
+            // full evaluation
+            let local_env = params.iter().zip(new_args.iter())
+                .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
+            body.evaluate(&local_env)
+        } else if params.len() > new_args.len() {
+            // partial evaluation
+            let lambda: Expression = (IR::Lambda {params:params.clone(), rests:rests.clone(), body:body.clone(), args:new_args}).into();
+            Ok((lambda, env.clone()))
         } else {
-            Err(error::make_type_error("function", exprs[0].as_ir().type_name()))
+            Err(error::make_argument_error("lambda", params.len(), new_args.len()))
         }
     }
 }
@@ -116,6 +145,7 @@ impl ToString for IR {
             IR::Integer(i) => i.to_string(),
             IR::Symbol(s) => s.clone(),
             IR::Function(_) => "<function>".to_string(),
+            IR::Lambda{params:_, rests:_, body:_, args:_} => "<lambda>".to_string(),
             IR::SExpr(exprs) => format!(
                 "({})",
                 itertools::join(

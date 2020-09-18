@@ -158,5 +158,6 @@ mod tests {
         assert_eq!("(eval {head (list 1 2 3 4)})", parse_and_format("eval {head (list 1 2 3 4)}"));
         assert_eq!("(def {x} 100)", parse_and_format("def {x} 100"));
         assert_eq!("(def {arglist} {a b x y})", parse_and_format("def {arglist} {a b x y}"));
+        assert_eq!("(def {add-mul} (\\ {x y} {+ x (* x y)}))", parse_and_format("def {add-mul} (\\ {x y} {+ x (* x y)})"));
     }
 }

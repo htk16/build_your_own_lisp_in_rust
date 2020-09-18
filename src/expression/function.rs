@@ -2,7 +2,7 @@ use std::rc::Rc;
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
 use crate::expression::{Expression, Evaluate, EvaluationResult};
-use crate::expression::ir::{IR, FunctionBody};
+use crate::expression::ir::IR;
 use crate::environment::Environment;
 use crate::error;
 
@@ -149,24 +149,29 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
                 }
             };
 
-            let params: Vec<Expression> = _params
+            let body = Expression::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
+            let mut params: Vec<Expression> = _params
                 .iter()
                 .map(|ir_ref| Expression::from(ir_ref))
                 .collect();
-            let lambda_body = Expression::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
-            let boxed_func: Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>> =
-                Box::new(move |args, env| {
-                    if params.len() != args.len() {
-                        return Err(error::make_argument_error("lambda", params.len(), args.len()))
+            let rest_symbol_pos = params.iter().position(|sym| sym.symbol_name().unwrap_or("") == "&");
+            match rest_symbol_pos {
+                Some(i) => {
+                    if (i != params.len() - 2) || (params[params.len() - 1].symbol_name().unwrap_or("&") == "&") {
+                        Err(anyhow!("Illegal position of symbol &"))
+                    } else {
+                        // contains rest parameters
+                        let rest = params[params.len() - 1].clone();
+                        params.remove(i); params.remove(i);
+                        let lambda = IR::Lambda {params, body, rests:Some(rest), args:vec![]};
+                        Ok((lambda.into(), env.clone()))
                     }
-
-                    // TODO added support for variable arguments.
-                    let local_env = params.iter().zip(args.iter())
-                        .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
-                    lambda_body.evaluate(&local_env)
-                });
-            let body = FunctionBody::from(boxed_func);
-            Ok((IR::Function(body).into(), env.clone()))
+                },
+                None => {
+                    let lambda = IR::Lambda {params, body, rests:None, args:vec![]};
+                    Ok((lambda.into(), env.clone()))
+                }
+            }
         },
         (IR::QExpr(_), _) => {
             Err(error::make_type_error("qlist", &exprs[1].type_name()))
