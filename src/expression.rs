@@ -116,6 +116,10 @@ mod tests {
         }
     }
 
+    const FUN: &str = r"def {fun} (\ {args body} {def (head args) (\ (tail args) body)})";
+    const PACK: &str = "fun {pack f & xs} {f xs}";
+    const UNPACK: &str = "fun {unpack f xs} {eval (join (list f) xs)}";
+
     #[test]
     fn evaluate_expression() {
         assert_eq!("<function>", eval("+"));
@@ -130,5 +134,8 @@ mod tests {
         assert_eq!("()", eval("def {arglist} {a b x y}"));
         assert_eq!("()", eval("def {add-mul} (\\ {x y} {+ x (* x y)})"));
         assert_eq!("210", eval_codes(&vec!["def {add-mul} (\\ {x y} {+ x (* x y)})", "add-mul 10 20"]));
+        assert_eq!("3", eval_codes(&vec![FUN, "fun {add-together x y} {+ x y}", "(add-together 1) 2"]));
+        assert_eq!("18", eval_codes(&vec![FUN, UNPACK, "unpack + {5 6 7}"]));
+        assert_eq!("{5}", eval_codes(&vec![FUN, PACK, "pack head 5 6 7"]));
     }
 }
