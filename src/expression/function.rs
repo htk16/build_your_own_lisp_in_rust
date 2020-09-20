@@ -61,7 +61,11 @@ fn make_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 fn head_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     if exprs.len() != 1 { return Err(error::make_argument_error("head", 1, exprs.len())) }
     match exprs[0].as_ir() {
-        IR::QExpr(xs) if xs.len() > 0 => Ok((Rc::clone(&xs[0]).into(), env.clone())),
+        IR::QExpr(xs) if xs.len() > 0 => {
+            let head_elem = Rc::clone(&xs[0]);
+            let head = IR::QExpr(vec![head_elem.into()]);
+            Ok((head.into(), env.clone()))
+        },
         IR::QExpr(xs) if xs.len() == 0 => Err(anyhow!("Function 'head' passed {}!")),
         _ => Err(error::make_type_error("qexpr", &exprs[0].to_string()))
     }
@@ -132,6 +136,7 @@ fn define_symbol(exprs: &[Expression], env: &Environment) -> EvaluationResult {
             .fold(env.clone(), |e, (name, value)| e.push(name.to_string(), Expression::from(value.as_ir_ref())));
         Ok((Expression::from(IR::SExpr(vec![])), new_env))
     } else {
+        println!("{:?}", &exprs[0]);
         Err(error::make_type_error("qlist", &exprs[0].type_name()))
     }
 }

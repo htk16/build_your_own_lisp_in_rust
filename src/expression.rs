@@ -125,7 +125,7 @@ mod tests {
         assert_eq!("<function>", eval("/"));
         assert_eq!("{1 2 (+ 5 6) 4}", eval("{1 2 (+ 5 6) 4}"));
         assert_eq!("{1 2 3 4}", eval("list 1 2 3 4"));
-        assert_eq!("1", eval("eval {head (list 1 2 3 4)}"));
+        assert_eq!("{1}", eval("eval {head (list 1 2 3 4)}"));
         assert_eq!("()", eval("def {x} 100"));
         assert_eq!("()", eval("def {arglist} {a b x y}"));
         assert_eq!("()", eval("def {add-mul} (\\ {x y} {+ x (* x y)})"));

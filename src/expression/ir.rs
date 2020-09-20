@@ -121,16 +121,24 @@ impl IR {
         let mut new_args = applied_args.clone();
         new_args.append(&mut _exprs);
 
-        // TODO support rest parameters
-        if params.len() == new_args.len() {
-            // full evaluation
-            let local_env = params.iter().zip(new_args.iter())
-                .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
-            body.evaluate(&local_env)
-        } else if params.len() > new_args.len() {
+        if params.len() > new_args.len() {
             // partial evaluation
             let lambda: Expression = (IR::Lambda {params:params.clone(), rests:rests.clone(), body:body.clone(), args:new_args}).into();
             Ok((lambda, env.clone()))
+        } else if let Some(rest_sym) = &*rests {
+            // full evaluation with rest parameters
+            let local_env = params.iter().zip(new_args.iter())
+                .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
+            let rest_params: Vec<IRRef> = new_args[params.len()..].iter()
+                .map(|e| e.as_ir_ref().clone())
+                .collect();
+            let local_env = local_env.push(rest_sym.symbol_name().unwrap().to_string(), IR::QExpr(rest_params).into());
+            body.evaluate(&local_env)
+        } else if params.len() == new_args.len() {
+            // full evaluation without rest parameters
+            let local_env = params.iter().zip(new_args.iter())
+                .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
+            body.evaluate(&local_env)
         } else {
             Err(error::make_argument_error("lambda", params.len(), new_args.len()))
         }
