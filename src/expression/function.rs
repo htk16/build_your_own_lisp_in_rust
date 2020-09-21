@@ -1,20 +1,28 @@
-use std::rc::Rc;
+use crate::environment::Environment;
+use crate::error;
+use crate::expression::ir::IR;
+use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType};
+use crate::validation::{ArgumentsValidation, TypeValidation};
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
-use crate::expression::{Expression, ExpressionType, Evaluate, EvaluationResult};
-use crate::expression::ir::IR;
-use crate::environment::Environment;
-use crate::validation::{ArgumentsValidation, TypeValidation};
-use crate::error;
+use std::rc::Rc;
 
 // TODO move error module
 macro_rules! panic_by_unexpected_arrival {
-    () => { panic!("Unexpected arrival!") }
+    () => {
+        panic!("Unexpected arrival!")
+    };
 }
 
 fn get_numbers(exprs: &[Expression]) -> Result<Vec<i64>> {
-    exprs.iter()
-        .map(|expr| expr.number().ok_or(anyhow!(error::expression_type_error(ExpressionType::Integer, expr))))
+    exprs
+        .iter()
+        .map(|expr| {
+            expr.number().ok_or(anyhow!(error::expression_type_error(
+                ExpressionType::Integer,
+                expr
+            )))
+        })
         .collect()
 }
 
@@ -45,7 +53,7 @@ fn multiple(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 fn divide(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     let numbers = get_numbers(exprs)?;
     if let Some(_) = numbers.iter().find(|v| **v == 0) {
-        return Err(error::divide_by_zero())
+        return Err(error::divide_by_zero());
     }
 
     let result = if numbers.len() == 1 {
@@ -73,9 +81,9 @@ fn head_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
             let head_elem = Rc::clone(&xs[0]);
             let head = IR::QExpr(vec![head_elem.into()]);
             Ok((head.into(), env.clone()))
-        },
+        }
         IR::QExpr(xs) if xs.len() == 0 => Err(anyhow!("Function 'head' passed {}!")),
-        _ => panic_by_unexpected_arrival!()
+        _ => panic_by_unexpected_arrival!(),
     }
 }
 
@@ -86,14 +94,10 @@ fn tail_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     match exprs[0].as_ir() {
         IR::QExpr(xs) if xs.len() == 0 => Ok((exprs[0].as_ir_ref().into(), env.clone())),
         IR::QExpr(xs) if xs.len() > 0 => {
-            let qexpr: Expression = IR::QExpr(
-                xs[1..]
-                    .iter()
-                    .map(Rc::clone)
-                    .collect()).into();
+            let qexpr: Expression = IR::QExpr(xs[1..].iter().map(Rc::clone).collect()).into();
             Ok((qexpr, env.clone()))
-        },
-        _ => panic_by_unexpected_arrival!()
+        }
+        _ => panic_by_unexpected_arrival!(),
     }
 }
 
@@ -102,7 +106,7 @@ fn join_qexprs(exprs: &[Expression], env: &Environment) -> EvaluationResult {
         .iter()
         .map(|expr| match expr.as_ir() {
             IR::QExpr(xs) => Ok(xs),
-            _ => Err(error::expression_type_error(ExpressionType::QExpr, expr))
+            _ => Err(error::expression_type_error(ExpressionType::QExpr, expr)),
         })
         .collect();
     let elems_list = elems_list?;
@@ -121,7 +125,7 @@ fn eval_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 
     match exprs[0].as_ir() {
         IR::QExpr(xs) => Expression::from(IR::SExpr(xs.to_vec())).evaluate(env),
-        _ => panic_by_unexpected_arrival!()
+        _ => panic_by_unexpected_arrival!(),
     }
 }
 
@@ -131,21 +135,26 @@ fn define_symbol(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 
     if let IR::QExpr(es) = exprs[0].as_ir() {
         if exprs.len() - 1 != es.len() {
-            return Err(error::argument_error("def", es.len() + 1, exprs.len()))
+            return Err(error::argument_error("def", es.len() + 1, exprs.len()));
         };
 
         for e in es {
             // TODO rewrite using TypeValidation
             if !e.is_symbol() {
-                return Err(error::expression_type_error(ExpressionType::Symbol, &Expression::from(e)))
+                return Err(error::expression_type_error(
+                    ExpressionType::Symbol,
+                    &Expression::from(e),
+                ));
             }
-        };
+        }
 
         let new_env = es
             .iter()
             .map(|symbol| symbol.symbol_name().unwrap())
             .zip(exprs[1..].iter())
-            .fold(env.clone(), |e, (name, value)| e.push(name.to_string(), Expression::from(value.as_ir_ref())));
+            .fold(env.clone(), |e, (name, value)| {
+                e.push(name.to_string(), Expression::from(value.as_ir_ref()))
+            });
         Ok((Expression::from(IR::SExpr(vec![])), new_env))
     } else {
         panic_by_unexpected_arrival!()
@@ -161,35 +170,53 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
         (IR::QExpr(_params), IR::QExpr(bs)) => {
             for param in _params {
                 if !param.is_symbol() {
-                    return Err(error::expression_type_error(ExpressionType::Symbol, &Expression::from(param)))
+                    return Err(error::expression_type_error(
+                        ExpressionType::Symbol,
+                        &Expression::from(param),
+                    ));
                 }
-            };
+            }
 
             let body = Expression::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
             let mut params: Vec<Expression> = _params
                 .iter()
                 .map(|ir_ref| Expression::from(ir_ref))
                 .collect();
-            let rest_symbol_pos = params.iter().position(|sym| sym.symbol_name().unwrap_or("") == "&");
+            let rest_symbol_pos = params
+                .iter()
+                .position(|sym| sym.symbol_name().unwrap_or("") == "&");
             match rest_symbol_pos {
                 Some(i) => {
-                    if (i != params.len() - 2) || (params[params.len() - 1].symbol_name().unwrap_or("&") == "&") {
+                    if (i != params.len() - 2)
+                        || (params[params.len() - 1].symbol_name().unwrap_or("&") == "&")
+                    {
                         Err(anyhow!("Illegal position of symbol &"))
                     } else {
                         // contains rest parameters
                         let rest = params[params.len() - 1].clone();
-                        params.remove(i); params.remove(i);
-                        let lambda = IR::Lambda {params, body, rests:Some(rest), args:vec![]};
+                        params.remove(i);
+                        params.remove(i);
+                        let lambda = IR::Lambda {
+                            params,
+                            body,
+                            rests: Some(rest),
+                            args: vec![],
+                        };
                         Ok((lambda.into(), env.clone()))
                     }
-                },
+                }
                 None => {
-                    let lambda = IR::Lambda {params, body, rests:None, args:vec![]};
+                    let lambda = IR::Lambda {
+                        params,
+                        body,
+                        rests: None,
+                        args: vec![],
+                    };
                     Ok((lambda.into(), env.clone()))
                 }
             }
-        },
-        _ => panic_by_unexpected_arrival!()
+        }
+        _ => panic_by_unexpected_arrival!(),
     }
 }
 

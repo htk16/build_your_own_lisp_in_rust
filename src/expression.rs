@@ -1,12 +1,12 @@
-mod ir;
 mod function;
+mod ir;
 use crate::environment::Environment;
-use crate::parser::Ast;
-use crate::expression::ir::{IR, IRRef, FunctionBody};
 pub use crate::expression::function::{BuiltinFunction, BUILTIN_FUNCTIONS};
+use crate::expression::ir::{FunctionBody, IRRef, IR};
+use crate::parser::Ast;
 use anyhow::Result;
-use std::rc::Rc;
 use std::ops::Deref;
+use std::rc::Rc;
 
 /// S-Expression
 #[derive(Debug)]
@@ -67,7 +67,7 @@ impl ExpressionType {
             ExpressionType::Symbol => "symbol",
             ExpressionType::Function => "function",
             ExpressionType::SExpr => "s-expression",
-            ExpressionType::QExpr => "q-expression"
+            ExpressionType::QExpr => "q-expression",
         }
     }
 }
@@ -84,7 +84,7 @@ impl From<&Ast> for Expression {
 
 #[cfg(test)]
 mod tests {
-    use super::{Expression, Evaluate, Environment};
+    use super::{Environment, Evaluate, Expression};
     use crate::parser::parse;
     use anyhow::anyhow;
 
@@ -104,10 +104,19 @@ mod tests {
         assert_eq!("(/)", create("/"));
         assert_eq!("({1 2 (+ 5 6) 4})", create("{1 2 (+ 5 6) 4}"));
         assert_eq!("(list 1 2 3 4)", create("list 1 2 3 4"));
-        assert_eq!("(eval {head (list 1 2 3 4)})", create("eval {head (list 1 2 3 4)}"));
+        assert_eq!(
+            "(eval {head (list 1 2 3 4)})",
+            create("eval {head (list 1 2 3 4)}")
+        );
         assert_eq!("(def {x} 100)", create("def {x} 100"));
-        assert_eq!("(def {arglist} {a b x y})", create("def {arglist} {a b x y}"));
-        assert_eq!("(def {add-mul} (\\ {x y} {+ x (* x y)}))", create("def {add-mul} (\\ {x y} {+ x (* x y)})"));
+        assert_eq!(
+            "(def {arglist} {a b x y})",
+            create("def {arglist} {a b x y}")
+        );
+        assert_eq!(
+            "(def {add-mul} (\\ {x y} {+ x (* x y)}))",
+            create("def {add-mul} (\\ {x y} {+ x (* x y)})")
+        );
     }
 
     fn eval(i: &str) -> String {
@@ -121,7 +130,8 @@ mod tests {
     }
 
     fn eval_codes(is: &Vec<&str>) -> String {
-        let parse_result: Option<Vec<Expression>> = is.iter()
+        let parse_result: Option<Vec<Expression>> = is
+            .iter()
             .map(|i| parse(*i).ok().map(|(ast, _)| Expression::from(&ast)))
             .collect::<Option<Vec<Expression>>>();
         match parse_result {
@@ -129,11 +139,13 @@ mod tests {
                 let nil = Expression::make_nil();
                 let init_env = Environment::init();
                 es.iter()
-                    .fold(Ok((nil, init_env)), |acc, expr| acc.and_then(|(_, env)| expr.evaluate(&env)))
+                    .fold(Ok((nil, init_env)), |acc, expr| {
+                        acc.and_then(|(_, env)| expr.evaluate(&env))
+                    })
                     .map(|(expr, _)| expr.to_string())
                     .unwrap_or("evaluation error".to_string())
-            },
-            None => "parse error".to_string()
+            }
+            None => "parse error".to_string(),
         }
     }
 
@@ -154,8 +166,21 @@ mod tests {
         assert_eq!("()", eval("def {x} 100"));
         assert_eq!("()", eval("def {arglist} {a b x y}"));
         assert_eq!("()", eval("def {add-mul} (\\ {x y} {+ x (* x y)})"));
-        assert_eq!("210", eval_codes(&vec!["def {add-mul} (\\ {x y} {+ x (* x y)})", "add-mul 10 20"]));
-        assert_eq!("3", eval_codes(&vec![FUN, "fun {add-together x y} {+ x y}", "(add-together 1) 2"]));
+        assert_eq!(
+            "210",
+            eval_codes(&vec![
+                "def {add-mul} (\\ {x y} {+ x (* x y)})",
+                "add-mul 10 20"
+            ])
+        );
+        assert_eq!(
+            "3",
+            eval_codes(&vec![
+                FUN,
+                "fun {add-together x y} {+ x y}",
+                "(add-together 1) 2"
+            ])
+        );
         assert_eq!("18", eval_codes(&vec![FUN, UNPACK, "unpack + {5 6 7}"]));
         assert_eq!("{5}", eval_codes(&vec![FUN, PACK, "pack head 5 6 7"]));
     }

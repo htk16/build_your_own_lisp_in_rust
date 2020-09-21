@@ -1,10 +1,10 @@
 use crate::expression::{Expression, BUILTIN_FUNCTIONS};
-use std::rc::Rc;
 use std::borrow::Borrow;
+use std::rc::Rc;
 
 /// Environment
 pub struct Environment {
-    binding: Link
+    binding: Link,
 }
 
 impl Clone for Environment {
@@ -18,16 +18,20 @@ type Link = Option<Rc<Binding>>;
 pub struct Binding {
     name: String,
     value: Expression,
-    next: Link
+    next: Link,
 }
 
 impl Environment {
     pub fn new(binding: Link) -> Environment {
-        Environment{ binding }
+        Environment { binding }
     }
 
     pub fn push(&self, name: String, value: Expression) -> Environment {
-        let new_link = Some(Rc::new(Binding {name, value, next: self.clone_binding()}));
+        let new_link = Some(Rc::new(Binding {
+            name,
+            value,
+            next: self.clone_binding(),
+        }));
         Environment::new(new_link)
     }
 
@@ -40,7 +44,9 @@ impl Environment {
         let init_env = Environment::new(None);
         BUILTIN_FUNCTIONS
             .entries()
-            .fold(init_env, |env, (name, builtin)| env.push(name.to_string(), Expression::make_function(*builtin)))
+            .fold(init_env, |env, (name, builtin)| {
+                env.push(name.to_string(), Expression::make_function(*builtin))
+            })
     }
 
     fn clone_binding(&self) -> Link {
@@ -53,22 +59,28 @@ impl<'a> IntoIterator for &'a Environment {
     type IntoIter = EnvironmentIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        EnvironmentIter{ next: self.binding.as_ref().map(|b| b.borrow()) }
+        EnvironmentIter {
+            next: self.binding.as_ref().map(|b| b.borrow()),
+        }
     }
 }
 
 pub struct EnvironmentIter<'a> {
-    next: Option<&'a Binding>
+    next: Option<&'a Binding>,
 }
 
 impl<'a> Iterator for EnvironmentIter<'a> {
     type Item = (&'a str, &'a Expression);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_binding = self.next
+        let next_binding = self
+            .next
             .as_ref()
             .and_then(|binding| binding.next.as_ref().map(|b| b.borrow()));
-        let item = self.next.as_ref().map(|binding| (binding.name.as_ref(), &binding.value));
+        let item = self
+            .next
+            .as_ref()
+            .map(|binding| (binding.name.as_ref(), &binding.value));
         self.next = next_binding;
         item
     }

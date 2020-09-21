@@ -1,13 +1,15 @@
-extern crate itertools;
 extern crate combine;
+extern crate itertools;
 use combine::{
+    error::ParseError,
+    many, many1, parser,
     parser::{
         char::{char, digit, letter, space},
         token::one_of,
     },
-    error::ParseError,
+    skip_many,
     stream::{Stream, StreamOnce},
-    Parser, parser, many, many1, skip_many
+    Parser,
 };
 
 /// AST of Lispy
@@ -19,7 +21,7 @@ pub enum Ast {
 
     // Lists
     SExpr(Vec<Ast>),
-    QExpr(Vec<Ast>)
+    QExpr(Vec<Ast>),
 }
 
 impl PartialEq for Ast {
@@ -47,31 +49,34 @@ impl ToString for Ast {
             Ast::QExpr(xs) => format!(
                 "{{{}}}",
                 itertools::join(xs.iter().map(|x| x.to_string()), " ")
-            )
+            ),
         }
     }
 }
 
 // Parser definitions
-fn sp<Input>() -> impl Parser<Input, Output=()>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn sp<Input>() -> impl Parser<Input, Output = ()>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     skip_many(space())
 }
 
-fn integer<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn integer<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     char('-')
         .with(many1::<String, _, _>(digit()).map(|s| Ast::Integer(-s.parse::<i64>().unwrap())))
         .or(many1::<String, _, _>(digit()).map(|s| Ast::Integer(s.parse::<i64>().unwrap())))
 }
 
-fn symbol<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn symbol<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     let valid_symbol = || one_of(r"+-*/\=<>!&?".chars());
     let head = || letter().or(valid_symbol());
@@ -79,9 +84,10 @@ where Input: Stream<Token = char>,
         .map(|(h, t)| Ast::Symbol(format!("{}{}", h, t)))
 }
 
-fn slist<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn slist<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     char('(')
         .with(many::<Vec<_>, _, _>(expr()))
@@ -89,9 +95,10 @@ where Input: Stream<Token = char>,
         .map(|es| Ast::SExpr(es))
 }
 
-fn qlist<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn qlist<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     char('{')
         .with(many::<Vec<_>, _, _>(expr()))
@@ -99,17 +106,15 @@ where Input: Stream<Token = char>,
         .map(|es| Ast::QExpr(es))
 }
 
-fn _expr<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+fn _expr<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    sp().with(symbol()
-              .or(integer())
-              .or(slist())
-              .or(qlist()))
+    sp().with(symbol().or(integer()).or(slist()).or(qlist()))
 }
 
-parser!{
+parser! {
     fn expr[Input]()(Input) -> Ast
     where [
         Input: Stream<Token = char>,
@@ -119,17 +124,18 @@ parser!{
     }
 }
 
-pub fn root<Input>() -> impl Parser<Input, Output=Ast>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+pub fn root<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    many::<Vec<_>, _, _>(expr())
-        .map(|es| Ast::SExpr(es))
+    many::<Vec<_>, _, _>(expr()).map(|es| Ast::SExpr(es))
 }
 
 pub fn parse<Input>(i: Input) -> Result<(Ast, Input), <Input as StreamOnce>::Error>
-where Input: Stream<Token = char>,
-      Input::Error: ParseError<Input::Token, Input::Range, Input::Position>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     let mut parser = root();
     parser.parse(i)
@@ -149,15 +155,27 @@ mod tests {
     #[test]
     fn parse_expression() {
         assert_eq!("(+)", parse_and_format("+"));
-        assert_eq!("(+ 1 (* 2 3) (- 4 5))", parse_and_format("+ 1 (* 2 3) (- 4 5)"));
+        assert_eq!(
+            "(+ 1 (* 2 3) (- 4 5))",
+            parse_and_format("+ 1 (* 2 3) (- 4 5)")
+        );
         assert_eq!("((- 100))", parse_and_format("(- 100)"));
         assert_eq!("()", parse_and_format(""));
         assert_eq!("(/)", parse_and_format("/"));
         assert_eq!("({1 2 (+ 5 6) 4})", parse_and_format("{1 2 (+ 5 6) 4}"));
         assert_eq!("(list 1 2 3 4)", parse_and_format("list 1 2 3 4"));
-        assert_eq!("(eval {head (list 1 2 3 4)})", parse_and_format("eval {head (list 1 2 3 4)}"));
+        assert_eq!(
+            "(eval {head (list 1 2 3 4)})",
+            parse_and_format("eval {head (list 1 2 3 4)}")
+        );
         assert_eq!("(def {x} 100)", parse_and_format("def {x} 100"));
-        assert_eq!("(def {arglist} {a b x y})", parse_and_format("def {arglist} {a b x y}"));
-        assert_eq!("(def {add-mul} (\\ {x y} {+ x (* x y)}))", parse_and_format("def {add-mul} (\\ {x y} {+ x (* x y)})"));
+        assert_eq!(
+            "(def {arglist} {a b x y})",
+            parse_and_format("def {arglist} {a b x y}")
+        );
+        assert_eq!(
+            "(def {add-mul} (\\ {x y} {+ x (* x y)}))",
+            parse_and_format("def {add-mul} (\\ {x y} {+ x (* x y)})")
+        );
     }
 }

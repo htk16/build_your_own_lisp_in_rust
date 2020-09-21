@@ -1,6 +1,6 @@
-pub mod repl;
-pub mod parser;
-pub mod expression;
 pub mod environment;
-pub mod validation;
 pub mod error;
+pub mod expression;
+pub mod parser;
+pub mod repl;
+pub mod validation;

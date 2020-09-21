@@ -1,6 +1,6 @@
 extern crate combine;
-use crate::expression::{Evaluate, Expression};
 use crate::environment::Environment;
+use crate::expression::{Evaluate, Expression};
 use crate::parser;
 use combine::EasyParser;
 use std::io;
@@ -33,12 +33,10 @@ pub fn do_repl() {
                                 println!("{}", expr.to_string());
                                 env = new_env
                             }
-                            Err(msg) => println!("Error: {}", msg)
+                            Err(msg) => println!("Error: {}", msg),
                         }
                     }
-                    Err(e) => {
-                        println!("parse error: {:?}", e)
-                    }
+                    Err(e) => println!("parse error: {:?}", e),
                 };
                 add_history(&input);
             }
