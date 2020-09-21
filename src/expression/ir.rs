@@ -68,43 +68,23 @@ impl IR {
     }
 
     pub fn is_number(&self) -> bool {
-        if let IR::Integer(_) = *self {
-            true
-        } else {
-            false
-        }
+        self.type_() == ExpressionType::Integer
     }
 
     pub fn is_symbol(&self) -> bool {
-        if let IR::Symbol(_) = *self {
-            true
-        } else {
-            false
-        }
+        self.type_() == ExpressionType::Symbol
     }
 
     pub fn is_sexpr(&self) -> bool {
-        if let IR::SExpr(_) = *self {
-            true
-        } else {
-            false
-        }
+        self.type_() == ExpressionType::SExpr
     }
 
     pub fn is_qexpr(&self) -> bool {
-        if let IR::QExpr(_) = *self {
-            true
-        } else {
-            false
-        }
+        self.type_() == ExpressionType::QExpr
     }
 
     pub fn is_function(&self) -> bool {
-        if let IR::Function(_) = *self {
-            true
-        } else {
-            false
-        }
+        self.type_() == ExpressionType::Function
     }
 
     pub fn is_atom(&self) -> bool {
