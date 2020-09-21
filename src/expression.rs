@@ -51,6 +51,27 @@ impl Expression {
     }
 }
 
+#[derive(PartialEq, Copy, Clone, Debug)]
+pub enum ExpressionType {
+    Integer,
+    Symbol,
+    Function,
+    SExpr,
+    QExpr,
+}
+
+impl ExpressionType {
+    pub fn name(&self) -> &'static str {
+        match *self {
+            ExpressionType::Integer => "integer",
+            ExpressionType::Symbol => "symbol",
+            ExpressionType::Function => "function",
+            ExpressionType::SExpr => "s-expression",
+            ExpressionType::QExpr => "q-expression"
+        }
+    }
+}
+
 pub trait Evaluate {
     fn evaluate(&self, env: &Environment) -> EvaluationResult;
 }

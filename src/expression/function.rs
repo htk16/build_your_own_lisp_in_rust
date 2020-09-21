@@ -1,14 +1,20 @@
 use std::rc::Rc;
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
-use crate::expression::{Expression, Evaluate, EvaluationResult};
+use crate::expression::{Expression, ExpressionType, Evaluate, EvaluationResult};
 use crate::expression::ir::IR;
 use crate::environment::Environment;
+use crate::validation::{ArgumentsValidation, TypeValidation};
 use crate::error;
+
+// TODO move error module
+macro_rules! panic_by_unexpected_arrival {
+    () => { panic!("Unexpected arrival!") }
+}
 
 fn get_numbers(exprs: &[Expression]) -> Result<Vec<i64>> {
     exprs.iter()
-        .map(|expr| expr.number().ok_or(anyhow!("{} isn't integer", expr.to_string())))
+        .map(|expr| expr.number().ok_or(anyhow!(error::expression_type_error(ExpressionType::Integer, expr))))
         .collect()
 }
 
@@ -39,7 +45,7 @@ fn multiple(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 fn divide(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     let numbers = get_numbers(exprs)?;
     if let Some(_) = numbers.iter().find(|v| **v == 0) {
-        return Err(anyhow!("Divide by zero"))
+        return Err(error::divide_by_zero())
     }
 
     let result = if numbers.len() == 1 {
@@ -59,7 +65,9 @@ fn make_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 }
 
 fn head_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
-    if exprs.len() != 1 { return Err(error::make_argument_error("head", 1, exprs.len())) }
+    ("head", exprs).required(1)?;
+    (&exprs[0]).required_type(ExpressionType::QExpr)?;
+
     match exprs[0].as_ir() {
         IR::QExpr(xs) if xs.len() > 0 => {
             let head_elem = Rc::clone(&xs[0]);
@@ -67,12 +75,14 @@ fn head_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
             Ok((head.into(), env.clone()))
         },
         IR::QExpr(xs) if xs.len() == 0 => Err(anyhow!("Function 'head' passed {}!")),
-        _ => Err(error::make_type_error("qexpr", &exprs[0].to_string()))
+        _ => panic_by_unexpected_arrival!()
     }
 }
 
 fn tail_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
-    if exprs.len() != 1 { return Err(error::make_argument_error("tail", 1, exprs.len())) }
+    ("tail", exprs).required(1)?;
+    (&exprs[0]).required_type(ExpressionType::QExpr)?;
+
     match exprs[0].as_ir() {
         IR::QExpr(xs) if xs.len() == 0 => Ok((exprs[0].as_ir_ref().into(), env.clone())),
         IR::QExpr(xs) if xs.len() > 0 => {
@@ -83,7 +93,7 @@ fn tail_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
                     .collect()).into();
             Ok((qexpr, env.clone()))
         },
-        _ => Err(error::make_type_error("qexpr", &exprs[0].to_string()))
+        _ => panic_by_unexpected_arrival!()
     }
 }
 
@@ -92,7 +102,7 @@ fn join_qexprs(exprs: &[Expression], env: &Environment) -> EvaluationResult {
         .iter()
         .map(|expr| match expr.as_ir() {
             IR::QExpr(xs) => Ok(xs),
-            e => Err(error::make_type_error("qexpr", &(*e).to_string()))
+            _ => Err(error::expression_type_error(ExpressionType::QExpr, expr))
         })
         .collect();
     let elems_list = elems_list?;
@@ -106,26 +116,28 @@ fn join_qexprs(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 }
 
 fn eval_qexpr(exprs: &[Expression], env: &Environment) -> EvaluationResult {
-    if exprs.len() != 1 { return Err(error::make_argument_error("head", 1, exprs.len())) }
+    ("eval", exprs).required(1)?;
+    (&exprs[0]).required_type(ExpressionType::QExpr)?;
+
     match exprs[0].as_ir() {
         IR::QExpr(xs) => Expression::from(IR::SExpr(xs.to_vec())).evaluate(env),
-        _ => Err(error::make_type_error("qlist", &exprs[0].type_name()))
+        _ => panic_by_unexpected_arrival!()
     }
 }
 
 fn define_symbol(exprs: &[Expression], env: &Environment) -> EvaluationResult {
-    if exprs.len() < 2 {
-        return Err(anyhow!("Function 'def' required 2 or more arguments, but passed {}", exprs.len()))
-    }
+    ("define", exprs).required_more_than_or_equal(2)?;
+    (&exprs[0]).required_type(ExpressionType::QExpr)?;
 
     if let IR::QExpr(es) = exprs[0].as_ir() {
         if exprs.len() - 1 != es.len() {
-            return Err(error::make_argument_error("def", es.len() + 1, exprs.len()))
+            return Err(error::argument_error("def", es.len() + 1, exprs.len()))
         };
 
         for e in es {
+            // TODO rewrite using TypeValidation
             if !e.is_symbol() {
-                return Err(error::make_type_error("symbol", e.type_name()))
+                return Err(error::expression_type_error(ExpressionType::Symbol, &Expression::from(e)))
             }
         };
 
@@ -136,21 +148,20 @@ fn define_symbol(exprs: &[Expression], env: &Environment) -> EvaluationResult {
             .fold(env.clone(), |e, (name, value)| e.push(name.to_string(), Expression::from(value.as_ir_ref())));
         Ok((Expression::from(IR::SExpr(vec![])), new_env))
     } else {
-        println!("{:?}", &exprs[0]);
-        Err(error::make_type_error("qlist", &exprs[0].type_name()))
+        panic_by_unexpected_arrival!()
     }
 }
 
 fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
-    if exprs.len() != 2 {
-        return Err(error::make_argument_error(r"\", 2, exprs.len()))
-    }
+    (r"\", exprs).required(2)?;
+    (&exprs[0]).required_type(ExpressionType::QExpr)?;
+    (&exprs[1]).required_type(ExpressionType::QExpr)?;
 
     match (exprs[0].as_ir(), exprs[1].as_ir()) {
         (IR::QExpr(_params), IR::QExpr(bs)) => {
             for param in _params {
                 if !param.is_symbol() {
-                    return Err(error::make_type_error("symbol", param.type_name()))
+                    return Err(error::expression_type_error(ExpressionType::Symbol, &Expression::from(param)))
                 }
             };
 
@@ -178,12 +189,7 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
                 }
             }
         },
-        (IR::QExpr(_), _) => {
-            Err(error::make_type_error("qlist", &exprs[1].type_name()))
-        },
-        (_, _) => {
-            Err(error::make_type_error("qlist", &exprs[0].type_name()))
-        }
+        _ => panic_by_unexpected_arrival!()
     }
 }
 

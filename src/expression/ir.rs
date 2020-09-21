@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use crate::environment::Environment;
-use crate::expression::{Expression, Evaluate, EvaluationResult};
+use crate::expression::{Expression, ExpressionType, Evaluate, EvaluationResult};
 use crate::parser::Ast;
 use crate::error;
 use std::rc::Rc;
@@ -41,15 +41,19 @@ pub enum IR {
 }
 
 impl IR {
-    pub fn type_name(&self) -> &'static str {
-        match *self {
-            IR::Integer(_) => "integer",
-            IR::Symbol(_) => "symbol",
-            IR::Function(_) => "function",
-            IR::Lambda {params:_, rests:_, body:_, args:_} => "lambda",
-            IR::SExpr(_) => "s-expression",
-            IR::QExpr(_) => "q-expression"
+    pub fn type_(&self) -> ExpressionType {
+        match self {
+            IR::Integer(_) => ExpressionType::Integer,
+            IR::Symbol(_) => ExpressionType::Symbol,
+            IR::Function(_) => ExpressionType::Function,
+            IR::Lambda { params:_, rests:_, body:_, args:_ } => ExpressionType::Function,
+            IR::SExpr(_) => ExpressionType::SExpr,
+            IR::QExpr(_) => ExpressionType::QExpr,
         }
+    }
+
+    pub fn type_name(&self) -> &'static str {
+        self.type_().name()
     }
 
     pub fn is_number(&self) -> bool {
@@ -106,7 +110,7 @@ impl IR {
             IR::Function(func) => func.0(&exprs[1..], env),
             IR::Lambda {params, rests, body, args:applied_args} =>
                 IR::apply_lambda(params, rests, body, applied_args, exprs[1..].into(), env),
-            _ => Err(error::make_type_error("function or lambda", exprs[0].as_ir().type_name()))
+            _ => Err(error::expression_type_error(ExpressionType::Function, &exprs[0]))
         }
     }
 
@@ -140,7 +144,7 @@ impl IR {
                 .fold(env.clone(), |e, (param, arg)| e.push(param.symbol_name().unwrap().to_string(), arg.clone()));
             body.evaluate(&local_env)
         } else {
-            Err(error::make_argument_error("lambda", params.len(), new_args.len()))
+            Err(error::argument_error("lambda", params.len(), new_args.len()))
         }
     }
 }
