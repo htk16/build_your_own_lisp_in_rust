@@ -1,6 +1,6 @@
 use crate::environment::Environment;
 use crate::error;
-use crate::expression::ir::IR;
+use crate::expression::ir::{IR, IRRef};
 use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType};
 use crate::validation::{ArgumentsValidation, TypeValidation};
 use ::phf::phf_map;
@@ -28,7 +28,7 @@ fn get_numbers(exprs: &[Expression]) -> Result<Vec<i64>> {
 
 pub type BuiltinFunction = fn(&[Expression], &Environment) -> EvaluationResult;
 
-pub fn plus(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+fn plus(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     get_numbers(exprs)
         .map(|nums| nums.iter().fold(0, |acc, n| acc + n))
         .map(|v| (IR::Integer(v).into(), env.clone()))
@@ -220,6 +220,73 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     }
 }
 
+fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
+    match (lhs.as_ir(), rhs.as_ir()) {
+        (IR::Integer(l), IR::Integer(r)) => l == r,
+        (IR::Symbol(l), IR::Symbol(r)) => l == r,
+        // TODO support BuiltinFunction
+        // (IR::Function(l), IR::Function(r)) => *l == *r,
+        (IR::Lambda{params:lparams, rests:lrests, body:lbody, args:largs},
+         IR::Lambda{params:rparams, rests:rrests, body:rbody, args:rargs}) =>
+            equal_expressions(lparams, rparams) &&
+                equal_op_expression(lrests, rrests) &&
+                equal_expression(lbody, rbody) &&
+                equal_expressions(largs, rargs),
+        (IR::SExpr(l), IR::SExpr(r)) => equal_ir_refs(l, r),
+        (IR::QExpr(l), IR::QExpr(r)) => equal_ir_refs(l, r),
+        _ => false
+    }
+}
+
+fn equal_op_expression(lhs: &Option<Expression>, rhs: &Option<Expression>) -> bool {
+    match (lhs, rhs) {
+        (Some(l), Some(r)) => equal_expression(l, r),
+        (None, None) => true,
+        _ => false
+    }
+}
+
+fn equal_expressions(lhs: &[Expression], rhs: &[Expression]) -> bool {
+    if lhs.len() != rhs.len() { return false };
+    lhs.iter().zip(rhs.iter())
+        .all(|(l, r)| equal_expression(l, r))
+}
+
+fn equal_ir_refs(lhs: &[IRRef], rhs: &[IRRef]) -> bool {
+    if lhs.len() != rhs.len() { return false };
+    lhs.iter().zip(rhs.iter())
+        .all(|(l, r)| equal_expression(&Expression::from(l), &Expression::from(r)))
+}
+
+fn equal(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    (r"\", exprs).required(2)?;
+    Ok((IR::Integer(if equal_expression(&exprs[0], &exprs[1]) {1} else {0}).into(), env.clone()))
+}
+
+fn not_equal(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    (r"\", exprs).required(2)?;
+    Ok((IR::Integer(if !equal_expression(&exprs[0], &exprs[1]) {1} else {0}).into(), env.clone()))
+}
+
+macro_rules! integer_binary_predicate {
+    ($name: ident, $op: tt) => {
+        fn $name(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+            (r"\", exprs).required(2)?;
+            (&exprs[0]).required_type(ExpressionType::Integer)?;
+            (&exprs[1]).required_type(ExpressionType::Integer)?;
+
+            match (exprs[0].number(), exprs[1].number()) {
+                (Some(lhs), Some(rhs)) => Ok((IR::Integer(if lhs $op rhs {1} else {0}).into(), env.clone())),
+                _ => panic_by_unexpected_arrival!()
+            }
+        }
+    };
+}
+integer_binary_predicate!(less_than, <);
+integer_binary_predicate!(less_than_equal, <=);
+integer_binary_predicate!(more_than, >);
+integer_binary_predicate!(more_than_equal, >=);
+
 pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
     phf_map! {
         "+" => plus,
@@ -232,6 +299,12 @@ pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
         "join" => join_qexprs,
         "eval" => eval_qexpr,
         "def" => define_symbol,
-        r"\" => lambda
+        r"\" => lambda,
+        r"<" => less_than,
+        r"<=" => less_than_equal,
+        r">" => more_than,
+        r">=" => more_than_equal,
+        r"==" => equal,
+        r"!=" => not_equal,
     }
 };
