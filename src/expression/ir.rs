@@ -1,6 +1,6 @@
 use crate::environment::Environment;
 use crate::error;
-use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType, BuiltinFunction};
+use crate::expression::{BuiltinFunction, Evaluate, EvaluationResult, Expression, ExpressionType};
 use crate::parser::Ast;
 use anyhow::{anyhow, Result};
 use std::rc::Rc;

@@ -1,6 +1,6 @@
 use crate::environment::Environment;
 use crate::error;
-use crate::expression::ir::{IR, IRRef};
+use crate::expression::ir::{IRRef, IR};
 use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType};
 use crate::validation::{ArgumentsValidation, TypeValidation};
 use ::phf::phf_map;
@@ -225,15 +225,28 @@ fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
         (IR::Integer(l), IR::Integer(r)) => l == r,
         (IR::Symbol(l), IR::Symbol(r)) => l == r,
         (IR::Function(l), IR::Function(r)) => *l == *r,
-        (IR::Lambda{params:lparams, rests:lrests, body:lbody, args:largs},
-         IR::Lambda{params:rparams, rests:rrests, body:rbody, args:rargs}) =>
-            equal_expressions(lparams, rparams) &&
-                equal_op_expression(lrests, rrests) &&
-                equal_expression(lbody, rbody) &&
-                equal_expressions(largs, rargs),
+        (
+            IR::Lambda {
+                params: lparams,
+                rests: lrests,
+                body: lbody,
+                args: largs,
+            },
+            IR::Lambda {
+                params: rparams,
+                rests: rrests,
+                body: rbody,
+                args: rargs,
+            },
+        ) => {
+            equal_expressions(lparams, rparams)
+                && equal_op_expression(lrests, rrests)
+                && equal_expression(lbody, rbody)
+                && equal_expressions(largs, rargs)
+        }
         (IR::SExpr(l), IR::SExpr(r)) => equal_ir_refs(l, r),
         (IR::QExpr(l), IR::QExpr(r)) => equal_ir_refs(l, r),
-        _ => false
+        _ => false,
     }
 }
 
@@ -241,30 +254,52 @@ fn equal_op_expression(lhs: &Option<Expression>, rhs: &Option<Expression>) -> bo
     match (lhs, rhs) {
         (Some(l), Some(r)) => equal_expression(l, r),
         (None, None) => true,
-        _ => false
+        _ => false,
     }
 }
 
 fn equal_expressions(lhs: &[Expression], rhs: &[Expression]) -> bool {
-    if lhs.len() != rhs.len() { return false };
-    lhs.iter().zip(rhs.iter())
+    if lhs.len() != rhs.len() {
+        return false;
+    };
+    lhs.iter()
+        .zip(rhs.iter())
         .all(|(l, r)| equal_expression(l, r))
 }
 
 fn equal_ir_refs(lhs: &[IRRef], rhs: &[IRRef]) -> bool {
-    if lhs.len() != rhs.len() { return false };
-    lhs.iter().zip(rhs.iter())
+    if lhs.len() != rhs.len() {
+        return false;
+    };
+    lhs.iter()
+        .zip(rhs.iter())
         .all(|(l, r)| equal_expression(&Expression::from(l), &Expression::from(r)))
 }
 
 fn equal(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     (r"\", exprs).required(2)?;
-    Ok((IR::Integer(if equal_expression(&exprs[0], &exprs[1]) {1} else {0}).into(), env.clone()))
+    Ok((
+        IR::Integer(if equal_expression(&exprs[0], &exprs[1]) {
+            1
+        } else {
+            0
+        })
+        .into(),
+        env.clone(),
+    ))
 }
 
 fn not_equal(exprs: &[Expression], env: &Environment) -> EvaluationResult {
     (r"\", exprs).required(2)?;
-    Ok((IR::Integer(if !equal_expression(&exprs[0], &exprs[1]) {1} else {0}).into(), env.clone()))
+    Ok((
+        IR::Integer(if !equal_expression(&exprs[0], &exprs[1]) {
+            1
+        } else {
+            0
+        })
+        .into(),
+        env.clone(),
+    ))
 }
 
 macro_rules! integer_binary_predicate {
@@ -286,6 +321,24 @@ integer_binary_predicate!(less_than_equal, <=);
 integer_binary_predicate!(more_than, >);
 integer_binary_predicate!(more_than_equal, >=);
 
+fn if_(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    (r"\", exprs).required(3)?;
+    (&exprs[0]).required_type(ExpressionType::Integer)?;
+    (&exprs[1]).required_type(ExpressionType::QExpr)?;
+    (&exprs[2]).required_type(ExpressionType::QExpr)?;
+
+    exprs[0]
+        .number()
+        .ok_or_else(|| error::expression_type_error(ExpressionType::Integer, &exprs[0]))
+        .and_then(|v| {
+            if v != 0 {
+                eval_qexpr(&exprs[1..2], env)
+            } else {
+                eval_qexpr(&exprs[2..3], env)
+            }
+        })
+}
+
 pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
     phf_map! {
         "+" => plus,
@@ -305,5 +358,6 @@ pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
         r">=" => more_than_equal,
         r"==" => equal,
         r"!=" => not_equal,
+        "if" => if_
     }
 };

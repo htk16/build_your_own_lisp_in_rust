@@ -179,6 +179,13 @@ mod tests {
         );
         assert_eq!("(> 10 5)", parse_and_format("> 10 5"));
         assert_eq!("(== 5 {})", parse_and_format("== 5 {}"));
-        assert_eq!("(== {1 2 3 {5 6}} {1 2 3 {5 6}})", parse_and_format("== {1 2 3 {5 6}} {1   2  3   {5 6}}"));
+        assert_eq!(
+            "(== {1 2 3 {5 6}} {1 2 3 {5 6}})",
+            parse_and_format("== {1 2 3 {5 6}} {1   2  3   {5 6}}")
+        );
+        assert_eq!(
+            "(if (== x y) {+ x y} {- x y})",
+            parse_and_format("if (== x y) {+ x y} {- x y}")
+        )
     }
 }

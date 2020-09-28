@@ -119,7 +119,14 @@ mod tests {
         );
         assert_eq!("(> 10 5)", create("> 10 5"));
         assert_eq!("(== 5 {})", create("== 5 {}"));
-        assert_eq!("(== {1 2 3 {5 6}} {1 2 3 {5 6}})", create("== {1 2 3 {5 6}} {1   2  3   {5 6}}"));
+        assert_eq!(
+            "(== {1 2 3 {5 6}} {1 2 3 {5 6}})",
+            create("== {1 2 3 {5 6}} {1   2  3   {5 6}}")
+        );
+        assert_eq!(
+            "(if (== x y) {+ x y} {- x y})",
+            create("if (== x y) {+ x y} {- x y}")
+        )
     }
 
     fn eval(i: &str) -> String {
@@ -189,5 +196,25 @@ mod tests {
         assert_eq!("1", eval("> 10 5"));
         assert_eq!("0", eval("== 5 {}"));
         assert_eq!("1", eval("== {1 2 3 {5 6}} {1   2  3   {5 6}}"));
+        assert_eq!(
+            "-100",
+            eval_codes(&vec!["def {x y} 100 200", "if (== x y) {+ x y} {- x y}"])
+        );
+        assert_eq!(
+            "3",
+            eval_codes(&vec![
+                FUN,
+                "fun {len l} {if (== l {}) {0} {+ 1 (len (tail l))}}",
+                "len {2 4 8}"
+            ])
+        );
+        assert_eq!(
+            "{8 4 2}",
+            eval_codes(&vec![
+                FUN,
+                "fun {reverse l} {if (== l {}) {{}} {join (reverse (tail l)) (head l)}}",
+                "reverse {2 4 8}"
+            ])
+        );
     }
 }
