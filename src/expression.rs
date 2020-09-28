@@ -47,7 +47,7 @@ impl Expression {
 
     pub fn make_function(func: BuiltinFunction) -> Expression {
         // TODO replace IR::from
-        Expression::from(IR::Function(FunctionBody::new(Box::new(func))))
+        Expression::from(IR::Function(FunctionBody::new(func)))
     }
 }
 
@@ -117,6 +117,9 @@ mod tests {
             "(def {add-mul} (\\ {x y} {+ x (* x y)}))",
             create("def {add-mul} (\\ {x y} {+ x (* x y)})")
         );
+        assert_eq!("(> 10 5)", create("> 10 5"));
+        assert_eq!("(== 5 {})", create("== 5 {}"));
+        assert_eq!("(== {1 2 3 {5 6}} {1 2 3 {5 6}})", create("== {1 2 3 {5 6}} {1   2  3   {5 6}}"));
     }
 
     fn eval(i: &str) -> String {
@@ -183,5 +186,8 @@ mod tests {
         );
         assert_eq!("18", eval_codes(&vec![FUN, UNPACK, "unpack + {5 6 7}"]));
         assert_eq!("{5}", eval_codes(&vec![FUN, PACK, "pack head 5 6 7"]));
+        assert_eq!("1", eval("> 10 5"));
+        assert_eq!("0", eval("== 5 {}"));
+        assert_eq!("1", eval("== {1 2 3 {5 6}} {1   2  3   {5 6}}"));
     }
 }

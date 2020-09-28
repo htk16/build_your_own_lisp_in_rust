@@ -1,23 +1,29 @@
 use crate::environment::Environment;
 use crate::error;
-use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType};
+use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType, BuiltinFunction};
 use crate::parser::Ast;
 use anyhow::{anyhow, Result};
 use std::rc::Rc;
 
-pub type FunctionBodyImpl =
-    Box<dyn Fn(&[Expression], &Environment) -> Result<(Expression, Environment)>>;
-pub struct FunctionBody(FunctionBodyImpl);
+pub struct FunctionBody(BuiltinFunction);
 
 impl FunctionBody {
-    pub fn new(func: FunctionBodyImpl) -> Self {
+    pub fn new(func: BuiltinFunction) -> Self {
         FunctionBody(func)
     }
 }
 
-impl From<FunctionBodyImpl> for FunctionBody {
-    fn from(func: FunctionBodyImpl) -> Self {
+impl From<BuiltinFunction> for FunctionBody {
+    fn from(func: BuiltinFunction) -> Self {
         FunctionBody(func)
+    }
+}
+
+impl PartialEq<FunctionBody> for FunctionBody {
+    fn eq(&self, other: &FunctionBody) -> bool {
+        let lhs = self.0 as *const ();
+        let rhs = other.0 as *const ();
+        lhs == rhs
     }
 }
 

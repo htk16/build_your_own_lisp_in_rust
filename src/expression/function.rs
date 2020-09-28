@@ -224,8 +224,7 @@ fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
     match (lhs.as_ir(), rhs.as_ir()) {
         (IR::Integer(l), IR::Integer(r)) => l == r,
         (IR::Symbol(l), IR::Symbol(r)) => l == r,
-        // TODO support BuiltinFunction
-        // (IR::Function(l), IR::Function(r)) => *l == *r,
+        (IR::Function(l), IR::Function(r)) => *l == *r,
         (IR::Lambda{params:lparams, rests:lrests, body:lbody, args:largs},
          IR::Lambda{params:rparams, rests:rrests, body:rbody, args:rargs}) =>
             equal_expressions(lparams, rparams) &&
