@@ -1,14 +1,18 @@
 extern crate combine;
 extern crate itertools;
 use combine::{
+    between,
     error::ParseError,
     many, many1, parser,
     parser::{
         char::{char, digit, letter, space},
         token::one_of,
     },
+    satisfy,
     skip_many,
+    StdParseResult,
     stream::{Stream, StreamOnce},
+    token,
     Parser,
 };
 
@@ -18,6 +22,7 @@ pub enum Ast {
     // Atoms
     Integer(i64),
     Symbol(String),
+    String_(String),
 
     // Lists
     SExpr(Vec<Ast>),
@@ -29,7 +34,9 @@ impl PartialEq for Ast {
         match (self, other) {
             (Ast::Integer(i), Ast::Integer(j)) => i == j,
             (Ast::Symbol(s), Ast::Symbol(t)) => s == t,
+            (Ast::String_(s), Ast::String_(t)) => s == t,
             (Ast::SExpr(xs), Ast::SExpr(ys)) => xs == ys,
+            (Ast::QExpr(xs), Ast::QExpr(ys)) => xs == ys,
             _ => false,
         }
     }
@@ -42,6 +49,7 @@ impl ToString for Ast {
         match self {
             Ast::Integer(i) => i.to_string(),
             Ast::Symbol(s) => s.clone(),
+            Ast::String_(s) => format!("\"{}\"", s),
             Ast::SExpr(xs) => format!(
                 "({})",
                 itertools::join(xs.iter().map(|x| x.to_string()), " ")
@@ -84,6 +92,42 @@ where
         .map(|(h, t)| Ast::Symbol(format!("{}{}", h, t)))
 }
 
+fn char_of_string<Input>(input: &mut Input) -> StdParseResult<char, Input> 
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    let (c, committed) = satisfy(|c| c != '"').parse_stream(input).into_result()?;
+    match c {
+        '\\' => committed.combine(|_| {
+            satisfy(|c| c == '"' || c == '\\' || c == 'n' || c == 't')
+                .map(|c| {
+                    match c {
+                        '"' => '"',
+                        '\\' => '\\',
+                        'n' => '\n',
+                        't' => '\t',
+                        c => c
+                    }
+                })
+                .parse_stream(input)
+                .into_result()
+        }),
+        _ => Ok((c, committed))
+    }
+}
+
+fn string<Input>() -> impl Parser<Input, Output = Ast>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    let element = parser(char_of_string);
+    let quoted = many::<String, _, _>(element);
+    between(token('"'), token('"'), quoted)
+        .map(|s| Ast::String_(s))
+}
+
 fn slist<Input>() -> impl Parser<Input, Output = Ast>
 where
     Input: Stream<Token = char>,
@@ -111,7 +155,7 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    sp().with(symbol().or(integer()).or(slist()).or(qlist()))
+    sp().with(symbol().or(integer()).or(string()).or(slist()).or(qlist()))
 }
 
 parser! {
@@ -186,6 +230,8 @@ mod tests {
         assert_eq!(
             "(if (== x y) {+ x y} {- x y})",
             parse_and_format("if (== x y) {+ x y} {- x y}")
-        )
+        );
+        assert_eq!("(\"hoge\")", parse_and_format("\"hoge\""));
+        assert_eq!("(\"aaa\"\n\t\")", parse_and_format("\"aaa\\\"\n\t\""));
     }
 }

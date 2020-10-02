@@ -39,6 +39,7 @@ pub enum IR {
     // Atoms
     Integer(i64),
     Symbol(String),
+    String_(String),
     Function(FunctionBody),
     Lambda {
         params: Vec<Expression>,
@@ -57,6 +58,7 @@ impl IR {
         match self {
             IR::Integer(_) => ExpressionType::Integer,
             IR::Symbol(_) => ExpressionType::Symbol,
+            IR::String_(_) => ExpressionType::String_,
             IR::Function(_) => ExpressionType::Function,
             IR::Lambda {
                 params: _,
@@ -79,6 +81,10 @@ impl IR {
 
     pub fn is_symbol(&self) -> bool {
         self.type_() == ExpressionType::Symbol
+    }
+
+    pub fn is_string(&self) -> bool {
+        self.type_() == ExpressionType::String_
     }
 
     pub fn is_sexpr(&self) -> bool {
@@ -216,6 +222,7 @@ impl ToString for IR {
         match self {
             IR::Integer(i) => i.to_string(),
             IR::Symbol(s) => s.clone(),
+            IR::String_(s) => format!("\"{}\"", s),
             IR::Function(_) => "<function>".to_string(),
             IR::Lambda {
                 params: _,
@@ -267,6 +274,7 @@ impl From<&Ast> for IRRef {
         match ast {
             Ast::Integer(v) => Rc::new(IR::Integer(*v)),
             Ast::Symbol(n) => Rc::new(IR::Symbol(String::from(n))),
+            Ast::String_(s) => Rc::new(IR::String_(String::from(s))),
             Ast::SExpr(xs) => {
                 let expr = xs.iter().map(|x| IRRef::from(x)).collect::<Vec<_>>();
                 Rc::new(IR::SExpr(expr))

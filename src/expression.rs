@@ -55,6 +55,7 @@ impl Expression {
 pub enum ExpressionType {
     Integer,
     Symbol,
+    String_,
     Function,
     SExpr,
     QExpr,
@@ -65,6 +66,7 @@ impl ExpressionType {
         match *self {
             ExpressionType::Integer => "integer",
             ExpressionType::Symbol => "symbol",
+            ExpressionType::String_ => "string",
             ExpressionType::Function => "function",
             ExpressionType::SExpr => "s-expression",
             ExpressionType::QExpr => "q-expression",
@@ -126,7 +128,9 @@ mod tests {
         assert_eq!(
             "(if (== x y) {+ x y} {- x y})",
             create("if (== x y) {+ x y} {- x y}")
-        )
+        );
+        assert_eq!("(\"hoge\")", create("\"hoge\""));
+        assert_eq!("(\"aaa\"\n\t\")", create("\"aaa\\\"\n\t\""));
     }
 
     fn eval(i: &str) -> String {
@@ -216,5 +220,7 @@ mod tests {
                 "reverse {2 4 8}"
             ])
         );
+        assert_eq!("\"hoge\"", eval("\"hoge\""));
+        assert_eq!("\"aaa\"\n\t\"", eval("\"aaa\\\"\n\t\""));
     }
 }
