@@ -3,6 +3,7 @@ use crate::environment::Environment;
 use crate::expression::{Evaluate, Expression};
 use crate::parser;
 use combine::EasyParser;
+use combine::stream::position::Stream;
 use std::io;
 use std::io::{stdout, Write};
 
@@ -21,8 +22,10 @@ pub fn do_repl() {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
+                println!("\"{}\"", input);
+                let stream = Stream::new(input.as_str());
                 let mut ast_parser = parser::root();
-                let parse_result = ast_parser.easy_parse(input.trim_end());
+                let parse_result = ast_parser.easy_parse(stream);
                 println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((ast, _)) => {
@@ -36,7 +39,7 @@ pub fn do_repl() {
                             Err(msg) => println!("Error: {}", msg),
                         }
                     }
-                    Err(e) => println!("parse error: {:?}", e),
+                    Err(e) => println!("parse error: {}", e.to_string()),
                 };
                 add_history(&input);
             }

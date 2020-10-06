@@ -131,6 +131,8 @@ mod tests {
         );
         assert_eq!("(\"hoge\")", create("\"hoge\""));
         assert_eq!("(\"aaa\"\n\t\")", create("\"aaa\\\"\n\t\""));
+        assert_eq!("(error \"fatal error!\")", create("error \"fatal error!\""));
+        assert_eq!("(+ 1 2 (error \"failed...\"))", create("+ 1 2 (error \"failed...\")"));
     }
 
     fn eval(i: &str) -> String {
@@ -222,5 +224,7 @@ mod tests {
         );
         assert_eq!("\"hoge\"", eval("\"hoge\""));
         assert_eq!("\"aaa\"\n\t\"", eval("\"aaa\\\"\n\t\""));
+        assert_eq!("fatal error!", eval("error \"fatal error!\""));
+        assert_eq!("failed...", eval("+ 1 2 (error \"failed...\")"));
     }
 }

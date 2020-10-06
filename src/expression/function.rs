@@ -1,11 +1,14 @@
 use crate::environment::Environment;
 use crate::error;
+use crate::parser;
 use crate::expression::ir::{IRRef, IR};
 use crate::expression::{Evaluate, EvaluationResult, Expression, ExpressionType};
 use crate::validation::{ArgumentsValidation, TypeValidation};
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
+use combine::EasyParser;
 use std::rc::Rc;
+use std::fs;
 
 // TODO move error module
 macro_rules! panic_by_unexpected_arrival {
@@ -339,6 +342,56 @@ fn if_(exprs: &[Expression], env: &Environment) -> EvaluationResult {
         })
 }
 
+fn load(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    ("error", exprs).required(1)?;
+    (&exprs[0]).required_type(ExpressionType::String_)?;
+
+    if let IR::String_(filepath) = exprs[0].as_ir() {
+        let contents = fs::read_to_string(filepath)?;
+        println!("contents: {}", &contents);
+        let mut ast_parser = parser::root_for_load();
+        let parse_result = ast_parser.easy_parse(contents.trim_end());
+        match parse_result {
+            Ok((asts, _rest)) => {
+                println!("AST: {:?}", asts);
+                let mut current_env = env.clone();
+                for ast in asts {
+                    let ir_ref = IRRef::from(&ast);
+                    let (_, new_env) = ir_ref.evaluate(&current_env)?;
+                    current_env = new_env;
+                }
+                Ok((Expression::make_nil(), current_env))
+            },
+            Err(parse_error) => {
+                Err(anyhow!("abnormal parse result, error: {}, contents: {}", parse_error, contents))
+            }
+        }
+    } else {
+        panic_by_unexpected_arrival!()
+    }
+}
+
+fn print(exprs: &[Expression], env: &Environment) -> EvaluationResult {
+    let strings = exprs
+        .iter()
+        .map(|e| if let IR::String_(s) = e.as_ir() { Ok(s)} else { Err(error::expression_type_error(ExpressionType::String_, e)) })
+        .collect::<Result<Vec<_>>>()?;
+    let contents = itertools::join(strings, " ");
+    println!("{}", contents);
+    Ok((Expression::make_nil(), env.clone()))
+}
+
+fn error_(exprs: &[Expression], _env: &Environment) -> EvaluationResult {
+    ("error", exprs).required(1)?;
+    (&exprs[0]).required_type(ExpressionType::String_)?;
+
+    if let IR::String_(msg) = exprs[0].as_ir() {
+        Err(anyhow!(msg.to_string()))
+    } else {
+        panic_by_unexpected_arrival!()
+    }
+}
+
 pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
     phf_map! {
         "+" => plus,
@@ -358,6 +411,9 @@ pub static BUILTIN_FUNCTIONS: phf::Map<&'static str, BuiltinFunction> = {
         r">=" => more_than_equal,
         r"==" => equal,
         r"!=" => not_equal,
-        "if" => if_
+        "if" => if_,
+        "load" => load,
+        "print" => print,
+        "error" => error_
     }
 };
