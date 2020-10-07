@@ -7,6 +7,7 @@ use crate::validation::{ArgumentsValidation, TypeValidation};
 use ::phf::phf_map;
 use anyhow::{anyhow, Result};
 use combine::EasyParser;
+use combine::stream::position::Stream;
 use std::rc::Rc;
 use std::fs;
 
@@ -348,9 +349,9 @@ fn load(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 
     if let IR::String_(filepath) = exprs[0].as_ir() {
         let contents = fs::read_to_string(filepath)?;
-        println!("contents: {}", &contents);
+        let stream = Stream::new(contents.as_str());
         let mut ast_parser = parser::root_for_load();
-        let parse_result = ast_parser.easy_parse(contents.trim_end());
+        let parse_result = ast_parser.easy_parse(stream);
         match parse_result {
             Ok((asts, _rest)) => {
                 println!("AST: {:?}", asts);
@@ -363,7 +364,7 @@ fn load(exprs: &[Expression], env: &Environment) -> EvaluationResult {
                 Ok((Expression::make_nil(), current_env))
             },
             Err(parse_error) => {
-                Err(anyhow!("abnormal parse result, error: {}, contents: {}", parse_error, contents))
+                Err(anyhow!("Parse error: {}", parse_error.to_string()))
             }
         }
     } else {

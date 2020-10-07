@@ -65,12 +65,12 @@ pub fn run_repl() -> anyhow::Result<()>{
                             Err(msg) => println!("Error: {}", msg),
                         }
                     }
-                    Err(e) => println!("parse error: {}", e.to_string()),
+                    Err(e) => println!("Parse error: {}", e.to_string()),
                 };
                 add_history(&input);
             }
             Err(error) => {
-                println!("unexpected error: {}", error);
+                println!("Unexpected error: {}", error);
                 break;
             }
         };
@@ -97,7 +97,7 @@ pub fn run_scripts(files: &Vec<PathBuf>) -> anyhow::Result<()> {
                 }
             },
             Err(parse_error) => {
-                return Err(anyhow!("Error: {}", parse_error))
+                return Err(anyhow!("Parse error: {}", parse_error.to_string()))
             }
         }
     };

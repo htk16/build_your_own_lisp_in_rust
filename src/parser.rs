@@ -3,6 +3,7 @@ extern crate itertools;
 use combine::{
     attempt,
     between,
+    eof,
     error::ParseError,
     many, many1, parser,
     parser::{
@@ -95,7 +96,7 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    let valid_symbol = || one_of(r"+-*/\=<>!&?".chars());
+    let valid_symbol = || one_of(r"_+-*/\=<>!&?".chars());
     let head = || letter().or(valid_symbol());
     (head(), many::<String, _, _>(head().or(digit())))
         .map(|(h, t)| Ast::Symbol(format!("{}{}", h, t)))
@@ -143,7 +144,7 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     char('(')
-        .with(many::<Vec<_>, _, _>(expr()))
+        .with(many::<Vec<_>, _, _>(attempt(expr())))
         .skip((sp(), char(')')))
         .map(|es| Ast::SExpr(es))
 }
@@ -154,7 +155,7 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     char('{')
-        .with(many::<Vec<_>, _, _>(expr()))
+        .with(many::<Vec<_>, _, _>(attempt(expr())))
         .skip((sp(), char('}')))
         .map(|es| Ast::QExpr(es))
 }
@@ -185,6 +186,7 @@ where
 {
     many::<Vec<_>, _, _>(attempt(expr()))
         .skip(sp())
+        .skip(eof())
         .map(|es| Ast::SExpr(es))
 }
 
@@ -193,7 +195,7 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    many::<Vec<_>, _, _>(attempt(expr())).skip(sp())
+    many::<Vec<_>, _, _>(attempt(expr())).skip(sp()).skip(eof())
 }
 
 pub fn parse<Input>(i: Input) -> Result<(Ast, Input), <Input as StreamOnce>::Error>
@@ -285,7 +287,12 @@ mod tests {
         assert_eq!("(+ 1 2 (error \"failed...\"))", parse_("+ 1 2 (error \"failed...\")"));
         assert_eq!("(* 0 1 2)", parse_("; foo bar \n * 0 1 2"));
         assert_eq!("(* 0 1 2)", parse_("; aaa\n* 0 1 ; bbb\n2   "));
-        assert_eq!("(+ 1 2 3)", parse_("+ 1 2 3 ; hoge fuga"))
+        assert_eq!("(+ 1 2 3)", parse_("+ 1 2 3 ; hoge fuga"));
+        assert_eq!(
+            "(def {fun} (\\ {f b} {def (head f) (\\ (tail f) b)}))",
+            parse_("def {fun} (\\ {f b} {\n\
+                      def (head f) (\\ (tail f) b)\n\
+                    })"))
     }
 
     fn parse_exprs(c: &str) -> String {
@@ -312,5 +319,16 @@ mod tests {
                          (def {false} 0)\n\
                          ; end of file")
         );
+        assert_eq!(
+            "(def {false} 0) (def {fun} (\\ {f b} {def (head f) (\\ (tail f) b)}))",
+            parse_exprs("(def {false} 0)\n\
+                         \n\
+                         ;;; Functional Functions\n\
+                         \n\
+                         ; Function Definitions\n\
+                         (def {fun} (\\ {f b} {\n\
+                         def (head f) (\\ (tail f) b)\n\
+                         }))")
+        )
     }
 }
