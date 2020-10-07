@@ -33,13 +33,34 @@ pub fn run_lispy() -> anyhow::Result<()> {
     }
 }
 
+fn load_prelude() -> anyhow::Result<Environment> {
+    let mut env = Environment::init();
+    let contents = fs::read_to_string("libs/prelude.lspy")?;
+    let mut load_parser = parser::root_for_load();
+    match load_parser.easy_parse(Stream::new(contents.as_str())) {
+        Ok((asts, _)) => {
+            let exprs = asts.iter().map(|ast| Expression::from(ast));
+            for expr in exprs {
+                match expr.evaluate(&env) {
+                    Ok((_, new_env)) => env = new_env,
+                    Err(msg) => return Err(anyhow!("Error: {}", msg))
+                }
+            };
+            Ok(env)
+        },
+        Err(parse_error) => {
+            return Err(anyhow!("Parse error: {}", parse_error.to_string()))
+        }
+    }
+}
+
 fn add_history(_: &str) {}
 
 pub fn run_repl() -> anyhow::Result<()>{
-    println!("Lispy version 0.14.0");
+    println!("Lispy version 0.15.0");
     println!("Press Ctrl+c to Exit\n");
 
-    let mut env = Environment::init();
+    let mut env = load_prelude()?;
 
     loop {
         print!("lispy> ");
@@ -48,11 +69,9 @@ pub fn run_repl() -> anyhow::Result<()>{
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                println!("\"{}\"", input);
                 let stream = Stream::new(input.as_str());
                 let mut ast_parser = parser::root();
                 let parse_result = ast_parser.easy_parse(stream);
-                println!("> {:?}", parse_result);
                 match parse_result {
                     Ok((ast, _)) => {
                         let expr = Expression::from(&ast);
@@ -80,7 +99,8 @@ pub fn run_repl() -> anyhow::Result<()>{
 }
 
 pub fn run_scripts(files: &Vec<PathBuf>) -> anyhow::Result<()> {
-    let mut env = Environment::init();
+    let mut env = load_prelude()?;
+
     for file in files {
         let contents = fs::read_to_string(file)?;
         let stream = Stream::new(contents.as_str());

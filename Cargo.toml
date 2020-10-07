@@ -1,6 +1,6 @@
 [package]
 name = "lispy"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["htk16 <armor_hiking@yahoo.co.jp>"]
 edition = "2018"
 
