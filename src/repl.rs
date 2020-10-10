@@ -1,5 +1,6 @@
 extern crate combine;
 extern crate structopt;
+extern crate rustyline;
 use crate::environment::Environment;
 use crate::expression::{Evaluate, Expression};
 use crate::parser;
@@ -7,9 +8,11 @@ use combine::EasyParser;
 use combine::stream::position::Stream;
 use structopt::StructOpt;
 use anyhow::anyhow;
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
+use rustyline_derive::{Completer, Helper, Highlighter, Hinter};
 use std::path::PathBuf;
-use std::io;
-use std::io::{stdout, Write};
 use std::fs;
 
 /// Lispy interpreter
@@ -54,22 +57,54 @@ fn load_prelude() -> anyhow::Result<Environment> {
     }
 }
 
-fn add_history(_: &str) {}
+#[derive(Completer, Helper, Highlighter, Hinter)]
+struct InputValidator {}
+
+impl Validator for InputValidator {
+    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult, ReadlineError> {
+        use ValidationResult::{Incomplete, Invalid, Valid};
+        let input = ctx.input();
+        let mut num_parenthesis = 0;
+        let mut num_curly_brackets = 0;
+        for c in input.chars() {
+            match c {
+                '(' => num_parenthesis += 1,
+                ')' => {
+                    num_parenthesis -= 1;
+                    if num_parenthesis < 0 { return Ok(Invalid(Some("Parse error: Unbaranced parenthesis...".to_string()))); }
+                },
+                '{' => num_curly_brackets += 1,
+                '}' => {
+                    num_curly_brackets -= 1;
+                    if num_curly_brackets < 0 { return Ok(Invalid(Some("Parse error: Unbaranced curly brackets...".to_string()))); }
+                },
+                _ => ()
+            };
+        };
+        if num_parenthesis > 0 || num_curly_brackets > 0 {
+            println!("({}, {})", num_parenthesis, num_curly_brackets);
+            Ok(Incomplete)
+        } else {
+            Ok(Valid(None))
+        }
+    }
+}
 
 pub fn run_repl() -> anyhow::Result<()>{
     println!("Lispy version 0.15.0");
     println!("Press Ctrl+c to Exit\n");
 
     let mut env = load_prelude()?;
+    let mut rl = Editor::new();
+    let validator = InputValidator {};
+    rl.set_helper(Some(validator));
 
     loop {
-        print!("lispy> ");
-        stdout().flush().unwrap();
-
-        let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                let stream = Stream::new(input.as_str());
+        let readline = rl.readline("lispy> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str());
+                let stream = Stream::new(line.as_str());
                 let mut ast_parser = parser::root();
                 let parse_result = ast_parser.easy_parse(stream);
                 match parse_result {
@@ -86,11 +121,11 @@ pub fn run_repl() -> anyhow::Result<()>{
                     }
                     Err(e) => println!("Parse error: {}", e.to_string()),
                 };
-                add_history(&input);
-            }
-            Err(error) => {
-                println!("Unexpected error: {}", error);
-                break;
+            },
+            Err(ReadlineError::Interrupted) => break,
+            Err(err) => {
+                println!("Unexpected error: {:?}", err);
+                break
             }
         };
     }
