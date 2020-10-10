@@ -181,11 +181,8 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
                 }
             }
 
-            let body = Expression::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
-            let mut params: Vec<Expression> = _params
-                .iter()
-                .map(|ir_ref| Expression::from(ir_ref))
-                .collect();
+            let body = IRRef::from(IR::SExpr(bs.iter().map(|e| e.clone()).collect()));
+            let mut params: Vec<IRRef> = _params.clone();
             let rest_symbol_pos = params
                 .iter()
                 .position(|sym| sym.symbol_name().unwrap_or("") == "&");
@@ -225,7 +222,11 @@ fn lambda(exprs: &[Expression], env: &Environment) -> EvaluationResult {
 }
 
 fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
-    match (lhs.as_ir(), rhs.as_ir()) {
+    equal_ir_ref(lhs.as_ir_ref(), rhs.as_ir_ref())
+}
+
+fn equal_ir_ref(lhs: &IRRef, rhs: &IRRef) -> bool {
+    match (lhs.as_ref(), rhs.as_ref()) {
         (IR::Integer(l), IR::Integer(r)) => l == r,
         (IR::Symbol(l), IR::Symbol(r)) => l == r,
         (IR::Function(l), IR::Function(r)) => *l == *r,
@@ -243,10 +244,10 @@ fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
                 args: rargs,
             },
         ) => {
-            equal_expressions(lparams, rparams)
-                && equal_op_expression(lrests, rrests)
-                && equal_expression(lbody, rbody)
-                && equal_expressions(largs, rargs)
+            equal_ir_refs(lparams, rparams)
+                && equal_op_ir_ref(lrests, rrests)
+                && equal_ir_ref(&lbody, &rbody)
+                && equal_ir_refs(largs, rargs)
         }
         (IR::SExpr(l), IR::SExpr(r)) => equal_ir_refs(l, r),
         (IR::QExpr(l), IR::QExpr(r)) => equal_ir_refs(l, r),
@@ -254,21 +255,12 @@ fn equal_expression(lhs: &Expression, rhs: &Expression) -> bool {
     }
 }
 
-fn equal_op_expression(lhs: &Option<Expression>, rhs: &Option<Expression>) -> bool {
+fn equal_op_ir_ref(lhs: &Option<IRRef>, rhs: &Option<IRRef>) -> bool {
     match (lhs, rhs) {
-        (Some(l), Some(r)) => equal_expression(l, r),
+        (Some(l), Some(r)) => equal_ir_ref(l, r),
         (None, None) => true,
         _ => false,
     }
-}
-
-fn equal_expressions(lhs: &[Expression], rhs: &[Expression]) -> bool {
-    if lhs.len() != rhs.len() {
-        return false;
-    };
-    lhs.iter()
-        .zip(rhs.iter())
-        .all(|(l, r)| equal_expression(l, r))
 }
 
 fn equal_ir_refs(lhs: &[IRRef], rhs: &[IRRef]) -> bool {

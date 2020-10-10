@@ -42,10 +42,10 @@ pub enum IR {
     String_(String),
     Function(FunctionBody),
     Lambda {
-        params: Vec<Expression>,
-        rests: Option<Expression>,
-        body: Expression,
-        args: Vec<Expression>,
+        params: Vec<IRRef>,
+        rests: Option<IRRef>,
+        body: IRRef,
+        args: Vec<IRRef>,
     },
 
     // Lists
@@ -158,14 +158,14 @@ impl IR {
     }
 
     fn apply_lambda(
-        params: &Vec<Expression>,
-        rests: &Option<Expression>,
-        body: &Expression,
-        applied_args: &Vec<Expression>,
+        params: &Vec<IRRef>,
+        rests: &Option<IRRef>,
+        body: &IRRef,
+        applied_args: &Vec<IRRef>,
         args: Vec<Expression>,
         env: &Environment,
     ) -> EvaluationResult {
-        let mut _exprs = args.clone();
+        let mut _exprs = args.iter().map(|expr| expr.as_ir_ref().clone()).collect::<Vec<_>>();
         let mut new_args = applied_args.clone();
         new_args.append(&mut _exprs);
 
@@ -185,11 +185,11 @@ impl IR {
                 .iter()
                 .zip(new_args.iter())
                 .fold(env.clone(), |e, (param, arg)| {
-                    e.push(param.symbol_name().unwrap().to_string(), arg.clone())
+                    e.push(param.symbol_name().unwrap().to_string(), Expression::from(arg))
                 });
             let rest_params: Vec<IRRef> = new_args[params.len()..]
                 .iter()
-                .map(|e| e.as_ir_ref().clone())
+                .map(|e| e.clone())
                 .collect();
             let local_env = local_env.push(
                 rest_sym.symbol_name().unwrap().to_string(),
@@ -202,7 +202,7 @@ impl IR {
                 .iter()
                 .zip(new_args.iter())
                 .fold(env.clone(), |e, (param, arg)| {
-                    e.push(param.symbol_name().unwrap().to_string(), arg.clone())
+                    e.push(param.symbol_name().unwrap().to_string(), Expression::from(arg))
                 });
             body.evaluate(&local_env)
         } else {
